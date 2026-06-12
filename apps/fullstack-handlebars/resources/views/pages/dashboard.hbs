@@ -1,0 +1,17 @@
+{{#> layout}}
+  <h1>Dashboard</h1>
+
+  {{#if flash}}
+    <div class="flash">{{flash}}</div>
+  {{/if}}
+
+  <div class="card">
+    <h2 style="margin-top: 0;">Welcome, {{user.name}}</h2>
+    <p>Email: {{user.email}}</p>
+    <p>Role: <span class="badge badge-{{user.role}}">{{user.role}}</span></p>
+
+    <form method="POST" action="/logout" style="margin-top: 16px;">
+      <button type="submit" class="btn" style="background: #ef4444;">Logout</button>
+    </form>
+  </div>
+{{/layout}}

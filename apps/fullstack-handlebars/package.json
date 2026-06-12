@@ -1,0 +1,20 @@
+{
+  "name": "@tekir/fullstack-handlebars-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch index.ts serve",
+    "tekir": "bun run index.ts"
+  },
+  "dependencies": {
+    "@tekir/core": "^0.1.34",
+    "@tekir/config": "^0.1.2",
+    "@tekir/db": "^0.1.4",
+    "@tekir/env": "^0.1.1",
+    "@tekir/hash": "^0.1.1",
+    "@tekir/logger": "^0.1.2",
+    "@tekir/session": "^0.1.4",
+    "@tekir/view": "^0.1.1",
+    "handlebars": "^4.7.8"
+  }
+}

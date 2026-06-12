@@ -1,0 +1,21 @@
+node_modules
+*.log
+
+# Env
+.env
+.env.local
+
+# Build artifacts
+dist
+.vite
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SQLite
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal

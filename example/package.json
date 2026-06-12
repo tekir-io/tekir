@@ -1,0 +1,23 @@
+{
+  "name": "@tekir/example",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "description": "Tekir contributor playground. Boots a tiny app on port 5000 against the local workspace packages so changes in `packages/*/src` are picked up without npm publish.",
+  "scripts": {
+    "dev": "bun run --watch index.ts",
+    "start": "bun run index.ts",
+    "test": "bun test tests/"
+  },
+  "dependencies": {
+    "@tekir/core": "^0.1.34",
+    "@tekir/cors": "^0.1.5",
+    "@tekir/db": "^0.1.4",
+    "@tekir/swagger": "^0.1.4"
+  },
+  "devDependencies": {
+    "@tekir/testing": "^0.1.8",
+    "@types/bun": "^1.3.11",
+    "typescript": "^6.0.2"
+  }
+}

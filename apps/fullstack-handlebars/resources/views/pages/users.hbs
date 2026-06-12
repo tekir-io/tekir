@@ -1,0 +1,21 @@
+{{#> layout}}
+  <h1>Users</h1>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Joined</th></tr>
+      </thead>
+      <tbody>
+        {{#each users}}
+          <tr>
+            <td>{{this.id}}</td>
+            <td><strong>{{this.name}}</strong></td>
+            <td>{{this.email}}</td>
+            <td><span class="badge badge-{{this.role}}">{{this.role}}</span></td>
+            <td class="text-muted">{{date this.created_at}}</td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+{{/layout}}

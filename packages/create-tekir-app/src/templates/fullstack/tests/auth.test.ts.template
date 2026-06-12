@@ -1,0 +1,78 @@
+import { test, expect, describe, createTestApp } from '@tekir/testing'
+
+// `createTestApp` boots the app in test mode, swaps sqlite to `:memory:` for
+// isolation, and runs pending migrations from `database/migrations` automatically.
+const { request } = await createTestApp()
+
+const credentials = {
+  name: 'Test User',
+  email: 'test@example.com',
+  password: 'password123',
+}
+
+let token = ''
+
+describe('Health', () => {
+  test('GET /health', async () => {
+    const res = await request.get('/health')
+    res.assertOk()
+    expect(res.body).toHaveProperty('status', 'ok')
+  })
+})
+
+describe('Auth', () => {
+  test('POST /api/auth/register creates a user and returns a token', async () => {
+    const res = await request.post('/api/auth/register', { body: credentials })
+    res.assertCreated()
+    expect(res.body.user.name).toBe(credentials.name)
+    expect(res.body.user.password).toBeUndefined()
+    expect(res.body.token).toHaveProperty('value')
+    token = (res.body as any).token.value
+  })
+
+  test('POST /api/auth/register rejects a duplicate email', async () => {
+    const res = await request.post('/api/auth/register', { body: credentials })
+    expect(res.status).toBe(409)
+  })
+
+  test('POST /api/auth/register validates the body', async () => {
+    const res = await request.post('/api/auth/register', {
+      body: { name: 'X', email: 'not-an-email', password: '12' },
+    })
+    expect(res.status).toBeGreaterThanOrEqual(400)
+  })
+
+  test('POST /api/auth/login returns a token for valid credentials', async () => {
+    const res = await request.post('/api/auth/login', {
+      body: { email: credentials.email, password: credentials.password },
+    })
+    res.assertOk()
+    expect(res.body.token).toHaveProperty('value')
+  })
+
+  test('POST /api/auth/login rejects a wrong password', async () => {
+    const res = await request.post('/api/auth/login', {
+      body: { email: credentials.email, password: 'wrong-password' },
+    })
+    res.assertUnauthorized()
+  })
+
+  test('GET /api/auth/me requires a token', async () => {
+    const res = await request.get('/api/auth/me')
+    res.assertUnauthorized()
+  })
+
+  test('GET /api/auth/me returns the authenticated user', async () => {
+    const res = await request.withToken(token).get('/api/auth/me')
+    res.assertOk()
+    expect(res.body.user.email).toBe(credentials.email)
+  })
+
+  test('POST /api/auth/logout returns ok for an authenticated request', async () => {
+    // JWT is stateless, so server-side logout is a no-op acknowledgement —
+    // the client should drop the token. Switch the route to the `api` guard
+    // (DatabaseTokenGuard) and call `auth.revokeAll()` for revocable sessions.
+    const logoutRes = await request.withToken(token).post('/api/auth/logout')
+    logoutRes.assertOk()
+  })
+})

@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "types": [
+      "@types/bun"
+    ],
+    "paths": {
+      "~/*": [
+        "./core/*"
+      ],
+      "#services": [
+        "./services.ts"
+      ],
+      "#env": [
+        "./env.ts"
+      ],
+      "#config/*": [
+        "./config/*"
+      ],
+      "#resources/*": [
+        "./resources/*"
+      ],
+      "@tekir/*": [
+        "../../packages/tekir-*/src"
+      ]
+    }
+  },
+  "include": [
+    "*.ts",
+    "core/**/*",
+    "config/**/*",
+    "start/**/*",
+    "database/**/*",
+    "resources/**/*"
+  ]
+}

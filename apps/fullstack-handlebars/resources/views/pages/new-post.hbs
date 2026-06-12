@@ -1,0 +1,14 @@
+{{#> layout}}
+  <h1>Create Post</h1>
+  <div class="card">
+    <form method="POST" action="/posts">
+      <label>Title</label>
+      <input type="text" name="title" placeholder="Post title" required>
+
+      <label>Body</label>
+      <textarea name="body" placeholder="Write something..." required></textarea>
+
+      <button type="submit" class="btn" style="margin-top: 12px;">Publish</button>
+    </form>
+  </div>
+{{/layout}}

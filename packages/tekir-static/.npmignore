@@ -1,0 +1,19 @@
+# Source & config
+tsconfig.json
+tsconfig.*.json
+.eslintrc*
+.prettierrc*
+biome.json
+
+# Tests
+tests/
+__tests__/
+*.test.ts
+*.spec.ts
+coverage/
+
+# Dev
+.turbo/
+node_modules/
+.DS_Store
+*.tsbuildinfo

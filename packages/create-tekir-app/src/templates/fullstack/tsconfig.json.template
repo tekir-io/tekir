@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["@types/bun"],
+    "paths": {
+      "~/*": ["./core/*"],
+      "#controllers/*": ["./core/controllers/*"],
+      "#models/*": ["./core/models/*"],
+      "#middleware/*": ["./core/middleware/*"],
+      "#validations/*": ["./validations/*"],
+      "#services": ["./services.ts"],
+      "#types": ["./types.ts"],
+      "#env": ["./env.ts"],
+      "#config/*": ["./config/*"],
+      "#database/*": ["./database/*"]
+    }
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules"]
+}

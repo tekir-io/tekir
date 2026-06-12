@@ -1,0 +1,10 @@
+{
+  "name": "@tekir/mysql-test",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@tekir/core": "^0.1.34",
+    "@tekir/db": "^0.1.4",
+    "mysql2": "^3.12.0"
+  }
+}

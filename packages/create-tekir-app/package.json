@@ -1,0 +1,34 @@
+{
+  "name": "create-tekir-app",
+  "version": "0.1.9",
+  "description": "Scaffold a new Tekir TypeScript project",
+  "author": "dev@tekir.io",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tekir-io/tekir.git",
+    "directory": "packages/create-tekir-app"
+  },
+  "homepage": "https://github.com/tekir-io/tekir/tree/main/packages/create-tekir-app",
+  "keywords": [
+    "tekir",
+    "bun",
+    "typescript",
+    "framework"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "create-tekir-app": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "src/templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target node --format esm && bun -e \"require('fs').cpSync('src/templates','dist/templates',{recursive:true})\"",
+    "prepublishOnly": "bun run build"
+  }
+}

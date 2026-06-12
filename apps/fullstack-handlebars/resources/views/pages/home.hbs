@@ -1,0 +1,26 @@
+{{#> layout}}
+  <h1>Welcome to tekir Framework</h1>
+  <p style="margin-bottom: 24px; color: #64748b;">
+    A fullstack example using Handlebars as the template engine.
+  </p>
+
+  <div class="grid">
+    <div class="card stat">
+      <div class="stat-value">{{stats.users}}</div>
+      <div class="stat-label">Users</div>
+    </div>
+    <div class="card stat">
+      <div class="stat-value">{{stats.posts}}</div>
+      <div class="stat-label">Posts</div>
+    </div>
+  </div>
+
+  <h2>How it works</h2>
+  <div class="card">
+    <p>This app uses <strong>Handlebars</strong> as the view engine via <code>@tekir/view</code>.</p>
+    <p style="margin-top: 8px; color: #64748b;">
+      The engine is configured in <code>config/view.ts</code> — templates live in
+      <code>resources/views/</code> and are rendered with <code>view.render()</code>.
+    </p>
+  </div>
+{{/layout}}

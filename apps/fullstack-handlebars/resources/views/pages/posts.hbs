@@ -1,0 +1,23 @@
+{{#> layout}}
+  <h1>Posts</h1>
+  <a href="/posts/new" class="btn" style="margin-bottom: 16px;">Create Post</a>
+
+  {{#if flash}}
+    <div class="flash">{{flash}}</div>
+  {{/if}}
+
+  <div class="grid">
+    {{#each posts}}
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <strong>{{this.title}}</strong>
+          <span class="badge badge-{{this.status}}">{{this.status}}</span>
+        </div>
+        <p style="color: #64748b; font-size: 14px; margin-bottom: 8px;">
+          {{truncate this.body 100}}
+        </p>
+        <span class="text-muted">by User #{{this.user_id}}</span>
+      </div>
+    {{/each}}
+  </div>
+{{/layout}}

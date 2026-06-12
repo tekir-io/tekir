@@ -1,0 +1,39 @@
+{
+  "name": "@tekir/cli",
+  "version": "0.1.6",
+  "description": "tekir command-line tool: serve, build, generate-key, and provider-registered commands.",
+  "author": "dev@tekir.io",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tekir-io/tekir.git",
+    "directory": "packages/tekir-cli"
+  },
+  "homepage": "https://github.com/tekir-io/tekir/tree/main/packages/tekir-cli",
+  "keywords": [
+    "tekir",
+    "bun",
+    "cli",
+    "typescript",
+    "framework"
+  ],
+  "type": "module",
+  "bin": {
+    "tekir": "bin/tekir.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@tekir/core": "^0.1.34",
+    "oxc-parser": ">=0.30.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

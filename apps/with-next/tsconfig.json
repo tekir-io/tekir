@@ -1,0 +1,47 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "types": [
+      "@types/bun"
+    ],
+    "paths": {
+      "~/*": [
+        "./core/*"
+      ],
+      "#services": [
+        "./services.ts"
+      ],
+      "#env": [
+        "./env.ts"
+      ],
+      "#config/*": [
+        "./config/*"
+      ]
+    },
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.d.ts"
+  ],
+  "exclude": [
+    ".next",
+    "node_modules"
+  ]
+}

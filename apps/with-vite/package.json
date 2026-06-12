@@ -1,0 +1,27 @@
+{
+  "name": "@tekir/with-vite-example",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun run index.ts",
+    "build": "bun run index.ts build",
+    "start": "bun run index.ts start"
+  },
+  "dependencies": {
+    "@tekir/core": "^0.1.34",
+    "@tekir/db": "^0.1.4",
+    "@tekir/cors": "^0.1.5",
+    "@tekir/vite": "^0.1.6",
+    "@tekir/swagger": "^0.1.4",
+    "@tekir/http-decorators": "^0.1.2",
+    "@tekir/bodyparser": "^0.1.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "vite": "^7.0.0",
+    "@vitejs/plugin-react": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
+  }
+}

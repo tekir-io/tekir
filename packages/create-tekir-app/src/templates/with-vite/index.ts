@@ -1,0 +1,52 @@
+import { tekir } from '@tekir/core'
+import { cors } from '@tekir/cors'
+import { swagger } from '@tekir/swagger'
+import { DatabaseProvider } from '@tekir/db'
+import type { Database } from '@tekir/db'
+
+const { router, service, start } = await tekir({
+  config: {
+    app: { name: 'My App', port: 3000, env: 'development' },
+    database: {
+      default: 'sqlite',
+      connections: {
+        sqlite: { driver: 'sqlite', connection: { path: './database/app.sqlite' } },
+      },
+    },
+  },
+  providers: [DatabaseProvider],
+  middleware: [cors({ origin: true })],
+  frontend: { type: 'vite' },
+})
+
+const db = service<Database>('db')
+
+await db.exec(`CREATE TABLE IF NOT EXISTS todos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  done INTEGER DEFAULT 0
+)`)
+
+// API routes — /api/* goes to tekir, everything else goes to Vite
+router.get('/api/todos', async () => await db.query('SELECT * FROM todos'))
+
+router.post('/api/todos', async ({ body }) => {
+  await db.run('INSERT INTO todos (title) VALUES (?)', [body.title])
+  return await db.queryOne('SELECT * FROM todos ORDER BY id DESC LIMIT 1')
+})
+
+router.put('/api/todos/:id', async ({ body, params }) => {
+  await db.run('UPDATE todos SET done = ? WHERE id = ?', [body.done ? 1 : 0, params.id])
+  return await db.queryOne('SELECT * FROM todos WHERE id = ?', [params.id])
+})
+
+router.delete('/api/todos/:id', async ({ params }) => {
+  await db.run('DELETE FROM todos WHERE id = ?', [params.id])
+  return { deleted: true }
+})
+
+swagger(router, { title: 'My App API', version: '1.0.0', path: '/docs' })
+
+start(() => {
+  console.log('Server running at http://localhost:3000')
+})

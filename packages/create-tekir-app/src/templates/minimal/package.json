@@ -1,0 +1,26 @@
+{
+  "name": "my-app",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tekir serve --dev",
+    "build": "tekir build --outdir ./dist",
+    "start": "tekir serve",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "@tekir/cli": "latest",
+    "@tekir/core": "latest",
+    "@tekir/db": "latest",
+    "@tekir/cors": "latest",
+    "@tekir/swagger": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@eslint/js": "^10.0.0",
+    "eslint": "^10.0.0",
+    "globals": "^17.0.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}

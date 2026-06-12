@@ -1,0 +1,23 @@
+node_modules
+*.log
+
+# Env
+.env
+.env.local
+
+# Build artifacts
+.next
+out
+dist
+*.tsbuildinfo
+next-env.d.ts
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SQLite
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal

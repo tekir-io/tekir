@@ -1,0 +1,61 @@
+{
+  "name": "@tekir/vite",
+  "version": "0.1.6",
+  "description": "Vite integration middleware for tekir",
+  "author": "dev@tekir.io",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tekir-io/tekir.git",
+    "directory": "packages/tekir-vite"
+  },
+  "homepage": "https://github.com/tekir-io/tekir/tree/main/packages/tekir-vite",
+  "keywords": [
+    "tekir",
+    "bun",
+    "typescript",
+    "framework",
+    "nodejs",
+    "fullstack"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "src/index.ts",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE",
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "types": "dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "dependencies": {
+    "@tekir/runtime": "^0.1.4",
+    "@tekir/core": "^0.1.34",
+    "get-port": "^7.1.0"
+  },
+  "peerDependencies": {
+    "vite": ">=7.0.0"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc --noEmit false",
+    "prepublishOnly": "bun run build"
+  },
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "name": "my-app",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tekir serve --dev",
+    "build": "tekir build --outdir ./dist",
+    "start": "tekir serve",
+    "test": "bun test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "imports": {
+    "#controllers/*": "./core/controllers/*.ts",
+    "#models/*": "./core/models/*.ts",
+    "#middleware/*": "./core/middleware/*.ts",
+    "#validations/*": "./validations/*.ts",
+    "#services": "./services.ts",
+    "#env": "./env.ts"
+  },
+  "dependencies": {
+    "zod": "^4.0.0",
+    "@tekir/cli": "latest",
+    "@tekir/core": "latest",
+    "@tekir/db": "latest",
+    "@tekir/auth": "latest",
+    "@tekir/view": "latest",
+    "@tekir/validator": "latest",
+    "@tekir/hash": "latest",
+    "@tekir/cors": "latest",
+    "@tekir/shield": "latest",
+    "@tekir/session": "latest",
+    "@tekir/cache": "latest",
+    "@tekir/logger": "latest",
+    "@tekir/config": "latest",
+    "@tekir/env": "latest",
+    "@tekir/swagger": "latest",
+    "@tekir/http-decorators": "latest",
+    "@tekir/bodyparser": "latest",
+    "@tekir/cron": "latest",
+    "@tekir/drive": "latest",
+    "@tekir/emitter": "latest",
+    "@tekir/notification": "latest",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tekir/testing": "latest",
+    "@types/bun": "latest",
+    "@eslint/js": "^10.0.0",
+    "eslint": "^10.0.0",
+    "globals": "^17.0.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}

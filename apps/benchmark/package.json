@@ -1,0 +1,17 @@
+{
+  "name": "@tekir/benchmark",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start:tekir": "bun run src/tekir.ts",
+    "start:elysia": "bun run src/elysia.ts",
+    "bench": "bun run src/run.ts"
+  },
+  "dependencies": {
+    "@tekir/core": "^0.1.34",
+    "@tekir/http-decorators": "^0.1.2",
+    "@tekir/validator": "^0.1.2",
+    "autocannon": "^8.0.0",
+    "elysia": "latest"
+  }
+}
