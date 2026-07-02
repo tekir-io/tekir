@@ -11,11 +11,17 @@ import { Cron } from './manager'
  */
 export class CronProvider {
   /**
+   * @param options.timezone - Default IANA timezone (e.g. `'UTC'`) for every
+   *   registered job. When omitted, patterns fire in the host's local time.
+   */
+  constructor(private readonly options?: { timezone?: string }) {}
+
+  /**
    * Register the cron service with the application.
    *
    * @param app - The application instance.
    */
   async register(app: App) {
-    app.instance('cron', new Cron())
+    app.instance('cron', new Cron(this.options))
   }
 }

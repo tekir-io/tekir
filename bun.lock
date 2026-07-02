@@ -352,7 +352,7 @@
     },
     "packages/tekir-cron": {
       "name": "@tekir/cron",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "dependencies": {
         "@tekir/core": "^0.1.30",
         "croner": "^9.0.0",

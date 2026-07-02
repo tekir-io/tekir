@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/cron": "^0.1.5"
+    "@tekir/cron": "^0.1.6"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

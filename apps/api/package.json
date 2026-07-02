@@ -26,7 +26,7 @@
     "@tekir/queue": "^0.1.2",
     "@tekir/notification": "^0.1.2",
     "@tekir/shield": "^0.1.2",
-    "@tekir/cron": "^0.1.5",
+    "@tekir/cron": "^0.1.6",
     "@tekir/cron-decorators": "^0.1.1",
     "@tekir/event-decorators": "^0.1.1",
     "@tekir/bodyparser": "^0.1.5",

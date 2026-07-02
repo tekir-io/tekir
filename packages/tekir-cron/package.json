@@ -1,6 +1,6 @@
 {
   "name": "@tekir/cron",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Cron job scheduling and task management",
   "author": "dev@tekir.io",
   "license": "MIT",

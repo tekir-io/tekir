@@ -31,6 +31,35 @@ interface InternalJob {
  */
 export class Cron {
   private jobs: Map<string, InternalJob> = new Map()
+  private defaultTimezone?: string
+
+  /**
+   * @param options.timezone - Default IANA timezone (e.g. `'UTC'`) that every
+   *   job's cron pattern is evaluated in. When omitted, patterns fire in the
+   *   host's local time (croner default). Can be overridden per-job in
+   *   {@link Cron.add} or changed later via {@link Cron.setTimezone}.
+   */
+  constructor(options?: { timezone?: string }) {
+    this.defaultTimezone = options?.timezone
+  }
+
+  /**
+   * Set the default IANA timezone applied to jobs registered afterwards.
+   * Call before {@link Cron.register}/{@link Cron.registerDir} so decorator
+   * jobs pick it up. Patterns already scheduled are not retroactively changed.
+   *
+   * @param timezone - IANA zone name (e.g. `'UTC'`), or `undefined` to fall
+   *   back to the host's local time.
+   *
+   * @example
+   * ```ts
+   * cron.setTimezone('UTC')
+   * await cron.registerDir('./cron')
+   * ```
+   */
+  setTimezone(timezone?: string): void {
+    this.defaultTimezone = timezone
+  }
 
   // add
 
@@ -40,6 +69,8 @@ export class Cron {
    * @param name - Unique identifier for the job.
    * @param pattern - Cron expression (e.g. `'0 0 * * *'` for daily at midnight).
    * @param callback - Function to run on each tick. May be async.
+   * @param options.timezone - IANA timezone for this job's pattern; falls back
+   *   to the manager default (see {@link Cron.setTimezone}) then host local time.
    * @returns A promise that resolves once the job is registered.
    * @throws Error if a job with the same name is already registered.
    *
@@ -52,6 +83,7 @@ export class Cron {
     name: string,
     pattern: string,
     callback: () => void | Promise<void>,
+    options?: { timezone?: string },
   ): Promise<void> {
     if (this.jobs.has(name)) {
       throw new Error(`[cron] Job "${name}" is already registered. Remove it first.`)
@@ -66,10 +98,11 @@ export class Cron {
     // async job never overlaps with itself. `protect: true` also asks croner to
     // skip overlapping triggers; the explicit flag is belt-and-suspenders and
     // keeps the guarantee even if a croner build ignores the option.
+    const timezone = options?.timezone ?? this.defaultTimezone
     let running = false
     let handle: any
     try {
-      handle = new Cron(pattern, { paused: false, protect: true }, () => {
+      handle = new Cron(pattern, { paused: false, protect: true, ...(timezone ? { timezone } : {}) }, () => {
         if (running) return
         let result: void | Promise<void>
         try {
