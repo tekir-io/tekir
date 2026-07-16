@@ -96,6 +96,7 @@ export async function createState(payload: Omit<StatePayload, 'timestamp' | 'non
  * ```
  */
 export async function verifyState(token: string, secret: string, maxAgeMs = 600_000): Promise<StatePayload | null> {
+  if (!Number.isFinite(maxAgeMs) || maxAgeMs < 0) return null
   const dotIdx = token.indexOf('.')
   if (dotIdx === -1) return null
 
@@ -107,8 +108,13 @@ export async function verifyState(token: string, secret: string, maxAgeMs = 600_
   try {
     const payload: StatePayload = JSON.parse(b64decode(data))
 
-    // Check expiry
-    if (Date.now() - payload.timestamp > maxAgeMs) return null
+    // Require a finite timestamp and reject future-issued tokens. Merely
+    // checking `now - timestamp > maxAge` lets strings/NaN and timestamps far
+    // in the future bypass expiry indefinitely.
+    if (!Number.isFinite(payload.timestamp)) return null
+    const age = Date.now() - payload.timestamp
+    if (age < 0 || age > maxAgeMs) return null
+    if (typeof payload.nonce !== 'string' || payload.nonce.length === 0) return null
 
     return payload
   } catch {

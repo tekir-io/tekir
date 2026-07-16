@@ -27,11 +27,14 @@ export class MemorySessionStore implements SessionStore {
   async read(id: string): Promise<Record<string, unknown> | null> {
     const entry = this.data.get(id)
     if (!entry || Date.now() > entry.expiresAt) { this.data.delete(id); return null }
-    return entry.data
+    // Match serialized stores (Redis/SQL): callers must never receive the
+    // live object held by the store, otherwise an unsaved request can mutate
+    // another concurrent request's session by reference.
+    return structuredClone(entry.data)
   }
 
   async write(id: string, data: Record<string, unknown>, ttlSeconds: number): Promise<void> {
-    this.data.set(id, { data, expiresAt: Date.now() + ttlSeconds * 1000 })
+    this.data.set(id, { data: structuredClone(data), expiresAt: Date.now() + ttlSeconds * 1000 })
     if (this.data.size > this.maxEntries) this.evict()
   }
 

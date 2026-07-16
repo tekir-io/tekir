@@ -146,8 +146,12 @@ export class RedisManager {
   unsubscribe(channel?: string) { return this.connection().unsubscribe(channel) }
   /** @see {@link Redis.send} */
   send(command: string, args: string[] = []) { return this.connection().send(command, args) }
+  /** @see {@link Redis.keyName} */
+  keyName(key: string) { return this.connection().keyName(key) }
   /** @see {@link Redis.getJSON} */
   getJSON<T = any>(key: string) { return this.connection().getJSON<T>(key) }
+  /** @see {@link Redis.setEx} */
+  setEx(key: string, value: string | number, seconds: number) { return this.connection().setEx(key, value, seconds) }
   /** @see {@link Redis.setJSON} */
   setJSON(key: string, value: any, expireSeconds?: number) { return this.connection().setJSON(key, value, expireSeconds) }
   /** @see {@link Redis.remember} */

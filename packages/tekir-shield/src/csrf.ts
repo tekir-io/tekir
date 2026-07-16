@@ -140,7 +140,12 @@ export function csrf(options: CsrfOptions = {}): MiddlewareFn {
     }
 
     // Skip validation for excepted paths.
-    const isExcepted = opts.exceptPaths.some((prefix) => url.startsWith(prefix))
+    let pathname: string
+    try { pathname = new URL(url, 'http://localhost').pathname } catch { pathname = url.split('?')[0] }
+    const isExcepted = opts.exceptPaths.some((prefix) => {
+      const normalized = prefix.length > 1 ? prefix.replace(/\/+$/, '') : prefix
+      return pathname === normalized || pathname.startsWith(normalized.endsWith('/') ? normalized : `${normalized}/`)
+    })
     if (isExcepted) {
       await next()
       return

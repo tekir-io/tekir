@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, afterEach } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync, existsSync, symlinkSync } from 'fs'
 import { join } from 'path'
 import os from 'os'
 import { vite } from '../src/middleware'
@@ -30,6 +30,7 @@ function setup() {
   writeFileSync(join(dist, '.env'), 'API_KEY=should-not-leak')
   // Legitimate assets.
   writeFileSync(join(pub, 'logo.png'), 'PNGDATA')
+  symlinkSync(join(appRoot, 'secret.txt'), join(pub, 'leak.txt'))
   writeFileSync(join(dist, 'app.js'), 'console.log(1)')
   writeFileSync(join(dist, 'index.html'), '<html></html>')
 
@@ -91,6 +92,10 @@ describe('vite prod fallback — path traversal', () => {
 
   test('does not serve a nested dotfile', async () => {
     expect(await bodyOf('/assets/.env')).not.toContain('should-not-leak')
+  })
+
+  test('does not follow a public symlink outside the served root', async () => {
+    expect(await bodyOf('/leak.txt')).not.toContain('TOP SECRET')
   })
 
   test('malformed percent-encoding does not throw (falls back)', async () => {

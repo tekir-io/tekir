@@ -65,6 +65,27 @@ describe('session cookie — secure-by-default flags', () => {
   })
 })
 
+describe('session cookie — configuration validation', () => {
+  test('includes configured Domain on a Response', async () => {
+    const { setCookie } = await runWithResponse(
+      { store: new MemorySessionStore(), cookie: { domain: 'example.com' } },
+      (ctx) => ctx.session.put('k', 'v'),
+    )
+    expect(setCookie).toContain('Domain=example.com')
+  })
+
+  test('rejects cookie attribute injection', () => {
+    expect(() => session({ cookie: { path: '/; HttpOnly=false' } })).toThrow('Invalid cookie path')
+    expect(() => session({ cookieName: 'sid\r\nX-Evil' })).toThrow('Invalid cookie name')
+  })
+
+  test('rejects insecure SameSite=None and invalid TTLs', () => {
+    expect(() => session({ cookie: { sameSite: 'none', secure: false } })).toThrow('must also be Secure')
+    expect(() => session({ age: 0 })).toThrow('positive number')
+    expect(() => session({ age: Number.NaN })).toThrow('positive number')
+  })
+})
+
 describe('session cookie — Set-Cookie always emitted', () => {
   test('writes Set-Cookie on the Response', async () => {
     const { setCookie } = await runWithResponse({ store: new MemorySessionStore() }, (ctx) => {

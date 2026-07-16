@@ -30,7 +30,9 @@ export class MemoryDriver implements DiskDriver {
   async get(key: string): Promise<Buffer> {
     const entry = this.store.get(key)
     if (!entry) throw new Error(`File not found: ${key}`)
-    return entry.content
+    // Match filesystem/object-store semantics: callers must not be able to
+    // mutate the stored object by modifying a returned Buffer.
+    return Buffer.from(entry.content)
   }
 
   /**
@@ -125,7 +127,11 @@ export class MemoryDriver implements DiskDriver {
   async copy(source: string, destination: string): Promise<void> {
     const entry = this.store.get(source)
     if (!entry) throw new Error(`File not found: ${source}`)
-    this.store.set(destination, { ...entry })
+    this.store.set(destination, {
+      content: Buffer.from(entry.content),
+      metadata: { ...entry.metadata },
+      createdAt: new Date(entry.createdAt),
+    })
   }
 
   /**
@@ -137,6 +143,7 @@ export class MemoryDriver implements DiskDriver {
    * @throws {Error} If the source file does not exist.
    */
   async move(source: string, destination: string): Promise<void> {
+    if (source === destination) return
     await this.copy(source, destination)
     this.store.delete(source)
   }

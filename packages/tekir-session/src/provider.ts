@@ -39,7 +39,9 @@ export class SessionProvider {
               '[@tekir/session] Session driver "redis" requires @tekir/redis. Run: bun add @tekir/redis and register RedisProvider.'
             )
           }
-          redis = new Redis({ ...config('redis', {}), ...sessionConfig })
+          // `session.prefix` belongs to the session store. Do not also feed it
+          // into @tekir/redis or keys become `sess:sess:<id>`.
+          redis = new Redis(config('redis', {}))
         }
         const { RedisSessionStore } = await import('./stores/redis')
         sessionConfig.store = new RedisSessionStore(redis, sessionConfig.prefix || 'sess:')

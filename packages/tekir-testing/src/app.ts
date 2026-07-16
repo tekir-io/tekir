@@ -110,13 +110,21 @@ export async function createTestApp(dirOrOptions?: string | TestAppOptions) {
   })
 
   tekirApp.server.configure({ port: opts?.port || 0 })
-  tekirApp.server.start()
+  await tekirApp.server.start()
 
-  // Run migrations from <appRoot>/database/migrations if present.
-  const migrationsDir = join(appRoot, 'database', 'migrations')
-  const shouldMigrate = opts?.migrate ?? existsSync(migrationsDir)
-  if (shouldMigrate) {
-    await runMigrations(tekirApp, migrationsDir)
+  try {
+    // Run migrations from <appRoot>/database/migrations if present.
+    const migrationsDir = join(appRoot, 'database', 'migrations')
+    const shouldMigrate = opts?.migrate ?? existsSync(migrationsDir)
+    if (shouldMigrate) {
+      await runMigrations(tekirApp, migrationsDir, opts?.migrate === true)
+    }
+  } catch (error) {
+    // A migration failure happens after the listener has started. Always tear
+    // the app down before surfacing it so a failed test bootstrap cannot leak a
+    // port, timers, or database connections into the rest of the suite.
+    await tekirApp.shutdown().catch(() => {})
+    throw error
   }
 
   const addr = tekirApp.server.getServer()
@@ -164,7 +172,9 @@ async function buildInMemoryDatabaseConfig(appRoot: string): Promise<unknown> {
         }
         return cloned
       }
-    } catch {}
+    } catch (error) {
+      throw new Error(`[@tekir/testing] Failed to load database config at ${candidate}`, { cause: error })
+    }
   }
   return fallback
 }
@@ -174,13 +184,16 @@ async function buildInMemoryDatabaseConfig(appRoot: string): Promise<unknown> {
 // harness, they just don't get auto-migrations).
 const optionalImport = (name: string): Promise<any> => import(name)
 
-async function runMigrations(tekirApp: any, migrationsDir: string) {
+async function runMigrations(tekirApp: any, migrationsDir: string, required: boolean) {
   if (!existsSync(migrationsDir)) return
   let MigrationRunner: any
   try {
     MigrationRunner = (await optionalImport('@tekir/db')).MigrationRunner
-  } catch {
-    return // @tekir/db not installed, nothing to do
+  } catch (error) {
+    if (required) {
+      throw new Error('[@tekir/testing] migrate:true requires @tekir/db to be installed', { cause: error })
+    }
+    return // auto-detected migrations remain optional when @tekir/db is absent
   }
   let db: any
   try { db = tekirApp.app.use('db') } catch { return }

@@ -200,15 +200,15 @@ export class Emitter<Events extends Record<string, unknown> = Record<string, unk
     this._once.delete(event)
 
     if (on) for (let i = 0; i < on.length; i++) {
-      try { const r = on[i](data); if (r instanceof Promise) r.catch(e => this._handleError(event, e)) }
+      try { const r = on[i](data); if (r && typeof (r as Promise<void>).then === 'function') Promise.resolve(r).catch(e => this._handleError(event, e)) }
       catch (e: unknown) { this._handleError(event, e) }
     }
     if (once) for (let i = 0; i < once.length; i++) {
-      try { const r = once[i](data); if (r instanceof Promise) r.catch(e => this._handleError(event, e)) }
+      try { const r = once[i](data); if (r && typeof (r as Promise<void>).then === 'function') Promise.resolve(r).catch(e => this._handleError(event, e)) }
       catch (e: unknown) { this._handleError(event, e) }
     }
     for (let i = 0; i < this._any.length; i++) {
-      try { const r = this._any[i](event, data); if (r instanceof Promise) r.catch(e => this._handleError(event, e)) }
+      try { const r = this._any[i](event, data); if (r && typeof (r as Promise<void>).then === 'function') Promise.resolve(r).catch(e => this._handleError(event, e)) }
       catch (e: unknown) { this._handleError(event, e) }
     }
   }
@@ -231,6 +231,7 @@ export class Emitter<Events extends Record<string, unknown> = Record<string, unk
     return new Promise((resolve, reject) => {
       if (options?.signal?.aborted) return reject(new Error('Aborted'))
       let timer: ReturnType<typeof setTimeout> | undefined
+      const onAbort = () => { cleanup(); reject(new Error('Aborted')) }
       // Named handler so it can be removed on timeout/abort — otherwise the
       // once-listener lingers in the _once map and resolves a dead promise (and
       // accumulates) when the event eventually fires.
@@ -238,9 +239,10 @@ export class Emitter<Events extends Record<string, unknown> = Record<string, unk
       const cleanup = () => {
         if (timer) clearTimeout(timer)
         this.off(event, handler as Handler<Events[K]>)
+        options?.signal?.removeEventListener('abort', onAbort)
       }
       this.once(event, handler)
-      if (options?.signal) options.signal.addEventListener('abort', () => { cleanup(); reject(new Error('Aborted')) }, { once: true })
+      if (options?.signal) options.signal.addEventListener('abort', onAbort, { once: true })
       if (options?.timeout) timer = setTimeout(() => { cleanup(); reject(new Error(`Timeout waiting for "${event}"`)) }, options.timeout)
     })
   }

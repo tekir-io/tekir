@@ -1,6 +1,6 @@
 {
   "name": "@tekir/runtime",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Cross-runtime abstraction for Bun and Node",
   "author": "dev@tekir.io",
   "license": "MIT",

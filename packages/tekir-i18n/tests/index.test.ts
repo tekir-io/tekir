@@ -385,6 +385,29 @@ describe('I18n - additional', () => {
       await mw(ctx, async () => {})
       expect(ctx.locale).toBe('en')
     })
+
+    test('honors q-values instead of blindly selecting the first language', async () => {
+      const i18n = new I18n({ defaultLocale: 'en' })
+      i18n.load('en', { hello: 'Hello' })
+      i18n.load('tr', { hello: 'Merhaba' })
+      const ctx: any = {
+        request: { header: () => 'en;q=0.2, tr;q=0.9' },
+      }
+      await i18n.middleware()(ctx, async () => {})
+      expect(ctx.locale).toBe('tr')
+      expect(ctx.t('hello')).toBe('Merhaba')
+    })
+
+    test('ignores languages explicitly disabled with q=0', async () => {
+      const i18n = new I18n({ defaultLocale: 'en' })
+      i18n.load('en', { hello: 'Hello' })
+      i18n.load('tr', { hello: 'Merhaba' })
+      const ctx: any = {
+        request: { header: () => 'tr;q=0, en;q=0.5' },
+      }
+      await i18n.middleware()(ctx, async () => {})
+      expect(ctx.locale).toBe('en')
+    })
   })
 
   describe('t() with special keys', () => {

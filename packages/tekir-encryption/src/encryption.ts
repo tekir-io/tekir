@@ -138,7 +138,15 @@ async function rawDecrypt(encoded: string, appKey: string): Promise<string> {
     const iv = combined.slice(1 + SALT_LENGTH, 1 + SALT_LENGTH + IV_LENGTH)
     const ciphertext = combined.slice(1 + SALT_LENGTH + IV_LENGTH)
     const key = await deriveKey(appKey, salt)
-    return decryptWith(key, iv, ciphertext)
+    try {
+      return await decryptWith(key, iv, ciphertext)
+    } catch {
+      // Legacy payloads had no magic/version prefix: their random IV can begin
+      // with byte 0x01 by chance. In that case the layout looks like v1, so
+      // retry the legacy interpretation before declaring the payload corrupt.
+      // Both formats are authenticated by GCM, therefore this fallback cannot
+      // turn tampered data into accepted plaintext.
+    }
   }
 
   // Legacy format: no version/salt, deterministic salt from the APP_KEY.
@@ -207,7 +215,7 @@ export class Encryption {
    * ```
    */
   constructor(appKey?: string) {
-    const resolvedKey = appKey ?? process?.env?.APP_KEY ?? ''
+    const resolvedKey = appKey ?? (typeof process !== 'undefined' ? process.env?.APP_KEY : undefined) ?? ''
 
     if (!resolvedKey) {
       throw new Error(

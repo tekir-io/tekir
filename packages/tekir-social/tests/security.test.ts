@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach } from 'bun:test'
-import { Social, AppleProvider, GitHubProvider, hideSensitiveFields } from '../src/index'
+import { Social, AppleProvider, DiscordProvider, GitHubProvider, GoogleProvider, hideSensitiveFields } from '../src/index'
 import { verifyAppleIdToken, _seedAppleJwksCache, _clearAppleJwksCache } from '../src/apple_jwt'
 import type { SocialConfig, SocialUser } from '../src/types'
 
@@ -179,6 +179,26 @@ describe('GitHub unverified email rejection', () => {
   })
 })
 
+describe('provider email verification', () => {
+  test('Google and Discord do not normalize unverified addresses as trusted email', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (url: RequestInfo | URL) => {
+      if (String(url).includes('googleapis')) {
+        return Response.json({ sub: 'g1', email: 'unverified@google.test', email_verified: false })
+      }
+      return Response.json({ id: 'd1', email: 'unverified@discord.test', verified: false })
+    }) as typeof fetch
+    try {
+      const google = new GoogleProvider({ clientId: 'g', clientSecret: 's', redirectUri: 'https://app/cb' })
+      const discord = new DiscordProvider({ clientId: 'd', clientSecret: 's', redirectUri: 'https://app/cb' })
+      expect((await google.getUser('token')).email).toBeNull()
+      expect((await discord.getUser('token')).email).toBeNull()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+})
+
 describe('SocialUser token hiding', () => {
   test('tokens and raw are non-enumerable (not serialized)', () => {
     const user: SocialUser = {
@@ -213,6 +233,14 @@ describe('OAuth state session binding (handleCallback)', () => {
     expect(r.url).toContain('code_challenge_method=S256')
   })
 
+  test('Apple redirect includes the nonce that will be verified on callback', async () => {
+    const social = new Social({
+      providers: { apple: { clientId: AUD, clientSecret: 's', redirectUri: 'https://app/cb' } },
+    })
+    const redirect = await social.redirect('apple')
+    expect(new URL(redirect.url).searchParams.get('nonce')).toBe(redirect.nonce)
+  })
+
   test('handleCallback rejects when storedState is missing (no session binding)', async () => {
     const social = new Social(config)
     const { state } = await social.redirect('google')
@@ -224,6 +252,12 @@ describe('OAuth state session binding (handleCallback)', () => {
     const { state } = await social.redirect('google')
     // Attacker presents a valid signed state but a stored nonce that does not match.
     await expect(social.handleCallback('google', 'code', state, 'unrelated-nonce')).rejects.toThrow(/not bound|CSRF/)
+  })
+
+  test('handleCallback fails before token exchange when PKCE verifier was not persisted', async () => {
+    const social = new Social(config)
+    const { state } = await social.redirect('google')
+    await expect(social.handleCallback('google', 'code', state, state)).rejects.toThrow('codeVerifier')
   })
 })
 

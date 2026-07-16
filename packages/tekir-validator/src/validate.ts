@@ -46,6 +46,20 @@ export class ValidationError extends Error {
 //   .safeParse(data) - returns { success, data, error } (Zod)
 async function parseSchema(schema: any, data: any): Promise<{ data: any; errors: Record<string, string[]> | null }> {
   try {
+    // Libraries and adapters that intentionally expose only the non-throwing
+    // safeParse API should work too. Check async first to preserve transforms.
+    if (typeof schema.safeParseAsync === 'function') {
+      const result = await schema.safeParseAsync(data)
+      if (result?.success) return { data: result.data, errors: null }
+      return { data: null, errors: formatErrors(result?.error ?? new Error('Validation failed')) }
+    }
+
+    if (typeof schema.safeParse === 'function') {
+      const result = await schema.safeParse(data)
+      if (result?.success) return { data: result.data, errors: null }
+      return { data: null, errors: formatErrors(result?.error ?? new Error('Validation failed')) }
+    }
+
     // Try .parseAsync first (Zod)
     if (typeof schema.parseAsync === 'function') {
       return { data: await schema.parseAsync(data), errors: null }

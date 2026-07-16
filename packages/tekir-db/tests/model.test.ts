@@ -11,6 +11,8 @@ import { eq } from 'drizzle-orm'
 
 let app: App
 let db: Database
+const serverStub = {} as any
+const loggerStub = {} as any
 
 beforeAll(async () => {
   app = new App()
@@ -26,10 +28,9 @@ beforeAll(async () => {
   })
 
   app.instance('db', db)
+  BaseModel.useDatabase(db)
 
   // Minimal stubs — model tests only use the 'db' service
-  const serverStub = {} as any
-  const loggerStub = {} as any
   setContainer(app, serverStub, loggerStub)
 })
 
@@ -85,6 +86,10 @@ beforeAll(async () => {
 
 // Clear tables before each test to keep tests isolated
 beforeEach(async () => {
+  // Other package test files also exercise the global container. Restore this
+  // suite's DB binding per test so `bun test packages/` is deterministic,
+  // independent of cross-file evaluation order.
+  setContainer(app, serverStub, loggerStub)
   await db.run('DELETE FROM users')
   await db.run('DELETE FROM posts')
 })
@@ -978,9 +983,7 @@ describe('count edge cases', () => {
     expect(await User.count()).toBe(3)
   })
 
-  test.skip('count does not include soft-deleted records', async () => {
-    // Known SQLite null-comparison issue: Drizzle's eq(col, null) generates `= NULL`
-    // instead of `IS NULL`, so the WHERE clause never matches and count returns 0.
+  test('count does not include soft-deleted records', async () => {
     const p1 = await Post.create({ title: 'CountSoft', views: 0 })
     await Post.create({ title: 'CountAlive', views: 0 })
     await Post.destroy(p1.id)
@@ -1131,10 +1134,7 @@ describe('withTrashed and onlyTrashed query builders', () => {
     expect(typeof q.all).toBe('function')
   })
 
-  test.skip('onlyTrashed().all() excludes non-deleted records', async () => {
-    // Known SQLite null-comparison issue: Drizzle's not(eq(col, null)) generates
-    // `NOT (col = NULL)` instead of `col IS NOT NULL`, so the WHERE clause never
-    // matches any rows and onlyTrashed() returns an empty result set.
+  test('onlyTrashed().all() excludes non-deleted records', async () => {
     const alive = await Post.create({ title: 'OTAlive', views: 0 })
     const dead = await Post.create({ title: 'OTDead', views: 0 })
     await Post.destroy(dead.id)

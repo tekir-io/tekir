@@ -2,7 +2,7 @@ import type { SessionStore } from '../types'
 
 interface SessionRedisClient {
   get(key: string): Promise<string | null>
-  set(key: string, value: string): Promise<unknown>
+  setEx(key: string, value: string, seconds: number): Promise<unknown>
   expire(key: string, seconds: number): Promise<unknown>
   del(key: string): Promise<unknown>
 }
@@ -18,8 +18,7 @@ export class RedisSessionStore implements SessionStore {
   }
 
   async write(id: string, data: Record<string, unknown>, ttlSeconds: number): Promise<void> {
-    await this.redis.set(this.prefix + id, JSON.stringify(data))
-    await this.redis.expire(this.prefix + id, ttlSeconds)
+    await this.redis.setEx(this.prefix + id, JSON.stringify(data), ttlSeconds)
   }
 
   async destroy(id: string): Promise<void> { await this.redis.del(this.prefix + id) }

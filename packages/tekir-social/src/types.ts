@@ -77,7 +77,7 @@ export interface SocialProvider {
    * @param codeChallenge - Optional PKCE S256 code challenge.
    * @returns The full authorization URL.
    */
-  getAuthUrl(state: string, scopes?: string[], codeChallenge?: string): string
+  getAuthUrl(state: string, scopes?: string[], codeChallenge?: string, nonce?: string): string
   /**
    * Exchange an authorization code for access and refresh tokens.
    * @param code - The authorization code from the callback.

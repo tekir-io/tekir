@@ -326,6 +326,7 @@ export class BaseModel {
    * ```
    */
   static async update(id: string, data: any): Promise<any | null> {
+    if (!this.isValidId(id)) return null
     const filtered = this.filterFillable(data)
     await runHooks(this, 'beforeSave', filtered)
     await runHooks(this, 'beforeUpdate', filtered)
@@ -359,6 +360,7 @@ export class BaseModel {
    * ```
    */
   static async delete(id: string): Promise<boolean> {
+    if (!this.isValidId(id)) return false
     await runHooks(this, 'beforeDelete', id)
     let result: any
     if (this.config.softDeletes) {
@@ -397,6 +399,7 @@ export class BaseModel {
    */
   static async restore(id: string): Promise<boolean> {
     if (!this.config.softDeletes) throw new Error('Soft deletes not enabled')
+    if (!this.isValidId(id)) return false
     const result = await this.getModel().findByIdAndUpdate(id, { deletedAt: null })
     return !!result
   }
@@ -408,6 +411,7 @@ export class BaseModel {
    * @returns `true` if a document was deleted, `false` otherwise.
    */
   static async forceDelete(id: string): Promise<boolean> {
+    if (!this.isValidId(id)) return false
     const result = await this.getModel().findByIdAndDelete(id)
     return !!result
   }
@@ -537,7 +541,8 @@ export class BaseModel {
     if (this.fillable.length === 0) return data
     const filtered: any = {}
     for (const key of this.fillable) {
-      if (key in data) filtered[key] = data[key]
+      // Do not mass-assign values inherited from a polluted/provided prototype.
+      if (data && typeof data === 'object' && Object.hasOwn(data, key)) filtered[key] = data[key]
     }
     return filtered
   }

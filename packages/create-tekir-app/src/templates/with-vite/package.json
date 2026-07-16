@@ -18,8 +18,8 @@
     "@tekir/swagger": "latest",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "vite": "^7.0.0",
-    "@vitejs/plugin-react": "^4.0.0"
+    "vite": "^8.1.4",
+    "@vitejs/plugin-react": "^6.0.3"
   },
   "devDependencies": {
     "@types/bun": "latest",

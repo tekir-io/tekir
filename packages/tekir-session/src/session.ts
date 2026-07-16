@@ -8,6 +8,15 @@ import type { SessionStore } from './types'
 // Keys that could pollute Object.prototype if written into a plain object.
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 
+function safeRecord(value: unknown): Record<string, unknown> {
+  const output = Object.create(null) as Record<string, unknown>
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return output
+  for (const [key, entry] of Object.entries(value)) {
+    if (!RESERVED_KEYS.has(key)) output[key] = entry
+  }
+  return output
+}
+
 export class Session {
   private _data: Record<string, unknown> = {}
   private _flash: Record<string, unknown> = {}
@@ -20,8 +29,10 @@ export class Session {
     data?: Record<string, unknown>
   ) {
     if (data) {
-      this._data = (data.data as Record<string, unknown>) || {}
-      this._flash = (data.flash as Record<string, unknown>) || {}
+      // Treat persisted data as untrusted input: malformed/custom stores must
+      // not inject inherited or prototype-mutating keys into session bags.
+      this._data = safeRecord(data.data)
+      this._flash = safeRecord(data.flash)
     }
   }
 
@@ -35,7 +46,7 @@ export class Session {
    * const userId = session.get<number>('user_id', 0)
    */
   get<T = any>(key: string, defaultValue?: T): T {
-    return (this._data[key] ?? defaultValue) as T
+    return (Object.prototype.hasOwnProperty.call(this._data, key) ? this._data[key] : defaultValue) as T
   }
 
   /**
@@ -58,7 +69,7 @@ export class Session {
    * @example
    * if (session.has('user_id')) { ... }
    */
-  has(key: string): boolean { return key in this._data }
+  has(key: string): boolean { return Object.prototype.hasOwnProperty.call(this._data, key) }
   all(): Record<string, unknown> { return { ...this._data } }
   /**
    * Retrieves a value and removes it from the session in one operation.
@@ -136,7 +147,7 @@ export class Session {
     this._dirty = true
     return val
   }
-  hasFlash(key: string): boolean { return key in this._flash }
+  hasFlash(key: string): boolean { return Object.prototype.hasOwnProperty.call(this._flash, key) }
   reflash(): void { /* keep flash for next request - no-op, just don't clear */ }
 
   /**

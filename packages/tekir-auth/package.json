@@ -1,6 +1,6 @@
 {
   "name": "@tekir/auth",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Authentication middleware with guards and token management",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/core": "^0.1.34"
+    "@tekir/core": "^0.1.35"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

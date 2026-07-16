@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test'
-import { serve } from '../src/server'
+import { serve, headersToObject } from '../src/server'
 import { fileResponse } from '../src/file'
 import { spawn } from '../src/spawn'
 import { openDatabase } from '../src/sqlite'
@@ -50,6 +50,19 @@ describe('serve — streaming (no full-body buffering)', () => {
     expect(text).toContain('data: 0')
     expect(text).toContain('data: 2')
     server.stop()
+  })
+})
+
+describe('serve — response headers', () => {
+  test('preserves multiple Set-Cookie values as separate headers', () => {
+    const headers = new Headers()
+    headers.append('Set-Cookie', 'a=1; Path=/; HttpOnly')
+    headers.append('Set-Cookie', 'b=2; Path=/; SameSite=Lax')
+    const out = headersToObject(headers)
+    expect(out['set-cookie']).toEqual([
+      'a=1; Path=/; HttpOnly',
+      'b=2; Path=/; SameSite=Lax',
+    ])
   })
 })
 

@@ -48,7 +48,9 @@ export class MemoryHeapCheck extends BaseCheck {
    */
   run(): Result {
     const { heapUsed } = process.memoryUsage()
-    const mb = Math.round(heapUsed / 1024 / 1024)
+    // Bun can report a sub-megabyte heap for small processes. Integer
+    // rounding turned a real positive measurement into the misleading 0MB.
+    const mb = Math.round((heapUsed / 1024 / 1024) * 100) / 100
     if (heapUsed > this._fail) return Result.failed(`Heap ${mb}MB exceeds limit`).mergeMetaData({ heapMB: mb })
     if (heapUsed > this._warn) return Result.warning(`Heap ${mb}MB above threshold`).mergeMetaData({ heapMB: mb })
     return Result.ok(`Heap ${mb}MB`).mergeMetaData({ heapMB: mb })
@@ -90,7 +92,7 @@ export class MemoryRSSCheck extends BaseCheck {
    */
   run(): Result {
     const { rss } = process.memoryUsage()
-    const mb = Math.round(rss / 1024 / 1024)
+    const mb = Math.round((rss / 1024 / 1024) * 100) / 100
     if (rss > this._fail) return Result.failed(`RSS ${mb}MB exceeds limit`).mergeMetaData({ rssMB: mb })
     if (rss > this._warn) return Result.warning(`RSS ${mb}MB above threshold`).mergeMetaData({ rssMB: mb })
     return Result.ok(`RSS ${mb}MB`).mergeMetaData({ rssMB: mb })

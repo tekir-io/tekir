@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises'
+import { readdir, realpath } from 'node:fs/promises'
 import { resolve, sep } from 'path'
 import { fileExists } from '@tekir/runtime'
 import type { BaseCommand } from './base_command'
@@ -91,6 +91,7 @@ export class Kernel {
   async discover(dir: string): Promise<this> {
     if (!(await fileExists(dir))) return this
     const base = resolve(dir)
+    const baseReal = await realpath(base)
     const dirFiles = await readdir(base, { recursive: true }) as string[]
     for (const file of dirFiles) {
       if (!/\.(ts|js)$/.test(file) || file.endsWith('.d.ts')) continue
@@ -99,7 +100,9 @@ export class Kernel {
       // (via symlinks or odd names) that resolve outside it.
       if (full !== base && !full.startsWith(base + sep)) continue
       try {
-        const mod = await import(full.replace(/\\/g, '/'))
+        const real = await realpath(full)
+        if (real !== baseReal && !real.startsWith(baseReal + sep)) continue
+        const mod = await import(real.replace(/\\/g, '/'))
         const Cmd = mod.default || Object.values(mod).find((v: any) => typeof v === 'function' && v.commandName)
         if (Cmd?.commandName) this.register(Cmd as CommandClass)
       } catch (err: any) {

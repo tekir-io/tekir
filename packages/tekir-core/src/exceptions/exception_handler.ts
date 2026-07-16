@@ -48,7 +48,7 @@ export class ExceptionHandler {
       try {
         const result = await (error as any).handle(error, ctx)
         if (result instanceof Response) return result
-        if (result) return new Response(typeof result === 'object' ? JSON.stringify(result) : String(result), {
+        if (result !== undefined && result !== null) return new Response(typeof result === 'object' ? JSON.stringify(result) : String(result), {
           status: (error as any).statusCode || 500,
           headers: { 'Content-Type': typeof result === 'object' ? 'application/json' : 'text/html; charset=utf-8' },
         })
@@ -82,10 +82,11 @@ export class ExceptionHandler {
       }
     }
 
-    // HttpException → JSON
-    if (error instanceof HttpException) {
-      return new Response(JSON.stringify(error.toJSON()), {
-        status: error.statusCode,
+    // HttpException and package-defined HTTP-shaped errors (for example
+    // validation errors) render their public JSON contract consistently.
+    if (error instanceof HttpException || ((error as any).statusCode && typeof (error as any).toJSON === 'function')) {
+      return new Response(JSON.stringify((error as any).toJSON()), {
+        status: (error as any).statusCode,
         headers: { 'Content-Type': 'application/json' },
       })
     }

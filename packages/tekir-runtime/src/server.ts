@@ -1,15 +1,21 @@
 // HTTP Server — abstraction over Bun.serve() and Node.js http
 
-import { isBun } from './detect'
+import { isBun } from './detect.js'
 import http from 'node:http'
 import { Readable } from 'node:stream'
 
 // `Headers.entries()` lives in the `DOM.Iterable` lib; some consumer
 // tsconfigs only pull in `DOM`. `forEach` is on the base `Headers` type
 // in plain `DOM`, so it stays portable across tsconfig setups.
-function headersToObject(h: Headers): Record<string, string> {
-  const out: Record<string, string> = {}
-  h.forEach((value, key) => { out[key] = value })
+export function headersToObject(h: Headers): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {}
+  h.forEach((value, key) => {
+    // Set-Cookie cannot be comma-folded: Expires itself contains a comma and
+    // Node needs an array to emit one header line per cookie.
+    if (key.toLowerCase() !== 'set-cookie') out[key] = value
+  })
+  const cookies = (h as any).getSetCookie?.() as string[] | undefined
+  if (cookies?.length) out['set-cookie'] = cookies
   return out
 }
 
@@ -29,8 +35,10 @@ const DEFAULT_MAX_BODY = 10 * 1024 * 1024 // 10 MB
 const DEFAULT_IDLE_TIMEOUT = 120000 // 120 s
 
 export interface RuntimeServer {
-  port: number
+  readonly port: number
   hostname: string
+  /** Resolves when the socket is listening; rejects on bind errors. */
+  ready: Promise<void>
   stop(): void
   upgrade(req: Request, opts?: any): boolean
   publish(topic: string, data: string | Buffer): void
@@ -75,6 +83,7 @@ function serveBun(options: ServeOptions): RuntimeServer {
   return {
     port: server.port,
     hostname: server.hostname,
+    ready: Promise.resolve(),
     stop: () => server.stop(),
     upgrade: (req: Request, opts?: any) => server.upgrade(req, opts),
     publish: (topic: string, data: string | Buffer) => server.publish(topic, data),
@@ -175,11 +184,22 @@ function serveNode(options: ServeOptions): RuntimeServer {
   server.headersTimeout = idleTimeout
   ;(server as any).timeout = idleTimeout
 
-  server.listen(options.port, options.hostname || '0.0.0.0')
+  const ready = new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => reject(error)
+    server.once('error', onError)
+    server.listen(options.port, options.hostname || '0.0.0.0', () => {
+      ;(server as any).removeListener('error', onError)
+      resolve()
+    })
+  })
 
   return {
-    port: options.port,
+    get port() {
+      const address = server.address()
+      return typeof address === 'object' && address ? address.port : options.port
+    },
     hostname: options.hostname || '0.0.0.0',
+    ready,
     stop: () => server.close(),
     upgrade: () => false, // WebSocket upgrade needs ws package on Node
     publish: () => {}, // No native pub/sub on Node

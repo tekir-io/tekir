@@ -134,7 +134,10 @@ export class LokiTransport implements LogTransport {
     }
 
     if (this.config.auth) {
-      const encoded = btoa(`${this.config.auth.username}:${this.config.auth.password}`)
+      const encoded = Buffer.from(
+        `${this.config.auth.username}:${this.config.auth.password}`,
+        'utf8',
+      ).toString('base64')
       headers['Authorization'] = `Basic ${encoded}`
     }
 

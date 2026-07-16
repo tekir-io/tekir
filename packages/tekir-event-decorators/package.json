@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/emitter": "^0.1.5"
+    "@tekir/emitter": "^0.1.6"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

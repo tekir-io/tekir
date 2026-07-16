@@ -111,9 +111,9 @@ export class Cron {
           console.error(`[cron] Unhandled error in job "${name}":`, err)
           return
         }
-        if (result instanceof Promise) {
+        if (result && typeof (result as Promise<void>).then === 'function') {
           running = true
-          result
+          Promise.resolve(result)
             .catch((err) =>
               console.error(`[cron] Unhandled error in job "${name}":`, err),
             )

@@ -60,6 +60,13 @@ describe('LocalDriver — symlink escape containment', () => {
     expect(existsSync(join(outside, 'injected.txt'))).toBe(false)
   })
 
+  test('rejected deep put does not create directories through an outside symlink', async () => {
+    const link = join(root, 'leak')
+    if (!trySymlink(outside, link, 'dir')) return
+    await expect(driver.put('leak/new/deep/file.txt', 'evil')).rejects.toThrow('Path traversal detected')
+    expect(existsSync(join(outside, 'new'))).toBe(false)
+  })
+
   test('delete through a symlinked directory pointing outside root is rejected', async () => {
     const link = join(root, 'leak')
     if (!trySymlink(outside, link, 'dir')) return

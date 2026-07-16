@@ -28,6 +28,12 @@ function fakeRedis(config: any = {}) {
         return 'OK'
       }
       if (c === 'DEL') { let n = 0; for (const k of args) { if (store.delete(k)) n++ } return n }
+      if (c === 'EVAL') {
+        const key = args[2]
+        const token = args[3]
+        if (store.get(key) === token) { store.delete(key); return 1 }
+        return 0
+      }
       if (c === 'SCAN') {
         const matchIdx = args.indexOf('MATCH')
         const pattern = matchIdx >= 0 ? args[matchIdx + 1] : '*'
@@ -45,6 +51,22 @@ function fakeRedis(config: any = {}) {
 }
 
 describe('setJSON atomicity', () => {
+  test('normalizes a documented trailing-colon prefix', () => {
+    const { redis } = fakeRedis({ prefix: 'app:' })
+    expect(redis.keyName('user:1')).toBe('app:user:1')
+  })
+
+  test('setEx applies the wrapper prefix and TTL in one command', async () => {
+    const { redis, sent } = fakeRedis({ prefix: 'session' })
+    await redis.setEx('id', 'payload', 60)
+    expect(sent[0]).toEqual(['SET', 'session:id', 'payload', 'EX', '60'])
+  })
+
+  test('rejects values JSON cannot serialize', async () => {
+    const { redis } = fakeRedis()
+    await expect(redis.setJSON('bad', undefined)).rejects.toThrow('cannot serialize undefined')
+  })
+
   test('uses a single SET ... EX command when a TTL is given', async () => {
     const { redis, sent } = fakeRedis({ prefix: 'app' })
     await redis.setJSON('user:1', { name: 'Alice' }, 60)
@@ -124,6 +146,16 @@ describe('remember stampede protection', () => {
     const v = await redis.remember('k', 60, async () => { called = true; return { cached: false } })
     expect(called).toBe(false)
     expect(v).toEqual({ cached: true })
+  })
+
+  test('a waiter never deletes a lock it did not acquire', async () => {
+    const { redis, store } = fakeRedis({ prefix: 'app' })
+    store.set('app:k:__lock', 'other-owner')
+    // Populate while the waiter is polling so it returns without computing.
+    setTimeout(() => store.set('app:k', JSON.stringify({ ready: true })), 20)
+    const value = await redis.remember('k', 60, async () => ({ ready: false }))
+    expect(value).toEqual({ ready: true })
+    expect(store.get('app:k:__lock')).toBe('other-owner')
   })
 })
 

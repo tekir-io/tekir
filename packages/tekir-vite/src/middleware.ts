@@ -1,5 +1,6 @@
 import { join, resolve, relative, isAbsolute } from 'path'
 import { existsSync } from 'fs'
+import { realpath } from 'fs/promises'
 
 import { fileResponse, fileExists, isDirectory } from '@tekir/runtime'
 
@@ -40,6 +41,17 @@ function safeStaticPath(root: string, pathname: string): string | null {
     return null
   }
   return filePath
+}
+
+/** Refuse symlink chains whose final target leaves the served directory. */
+async function realPathContained(filePath: string, root: string): Promise<boolean> {
+  try {
+    const [realRoot, realFile] = await Promise.all([realpath(root), realpath(filePath)])
+    const rel = relative(realRoot, realFile)
+    return !(rel === '..' || rel.startsWith('../') || rel.startsWith('..\\') || isAbsolute(rel))
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -278,6 +290,7 @@ export async function vite(server: any, config: ViteConfig = {}, ctx: SetupCtx =
       },
     })
     await viteServer.listen()
+    server.onStop?.(() => viteServer.close())
 
     let logger: any
     try { logger = getLogger() } catch { logger = console }
@@ -316,7 +329,12 @@ export async function vite(server: any, config: ViteConfig = {}, ctx: SetupCtx =
     if (url.pathname !== '/') {
       const publicRoot = resolve(appRoot, 'public')
       const publicPath = safeStaticPath(publicRoot, url.pathname)
-      if (publicPath && await fileExists(publicPath) && !(await isDirectory(publicPath))) {
+      if (
+        publicPath &&
+        await fileExists(publicPath) &&
+        !(await isDirectory(publicPath)) &&
+        await realPathContained(publicPath, publicRoot)
+      ) {
         return fileResponse(publicPath)
       }
     }
@@ -343,14 +361,15 @@ export async function vite(server: any, config: ViteConfig = {}, ctx: SetupCtx =
     if (
       distFile &&
       await fileExists(distFile) &&
-      !(await isDirectory(distFile))
+      !(await isDirectory(distFile)) &&
+      await realPathContained(distFile, distRoot)
     ) {
       return fileResponse(distFile)
     }
 
     // SPA fallback: serve index.html for client-side routing.
     const indexPath = join(distRoot, 'index.html')
-    if (await fileExists(indexPath)) {
+    if (await fileExists(indexPath) && await realPathContained(indexPath, distRoot)) {
       return fileResponse(indexPath)
     }
     return notFoundJson()

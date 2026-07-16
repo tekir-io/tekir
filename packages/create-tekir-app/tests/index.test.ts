@@ -1,5 +1,8 @@
 import { test, expect, describe } from 'bun:test'
 import { relative, isAbsolute } from 'path'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { resolveProjectTarget, toPackageName } from '../src/index'
 
 describe('resolveProjectTarget — valid names', () => {
@@ -79,5 +82,47 @@ describe('toPackageName', () => {
   })
   test('falls back to "app" when nothing remains', () => {
     expect(toPackageName('___')).toBe('app')
+  })
+})
+
+describe('CLI scaffolding integration', () => {
+  const entry = new URL('../src/index.ts', import.meta.url).pathname
+
+  test('creates a complete minimal project and renames template files', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'create-tekir-app-'))
+    try {
+      const result = Bun.spawnSync(
+        [process.execPath, entry, 'My-App', '--template=minimal'],
+        { cwd }
+      )
+      expect(result.exitCode).toBe(0)
+      const target = join(cwd, 'My-App')
+      expect(existsSync(join(target, 'index.ts'))).toBe(true)
+      expect(existsSync(join(target, 'tsconfig.json'))).toBe(true)
+      expect(existsSync(join(target, 'tsconfig.json.template'))).toBe(false)
+      expect(existsSync(join(target, '.gitignore'))).toBe(true)
+      const pkg = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'))
+      expect(pkg.name).toBe('my-app')
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  test('refuses to overwrite a non-empty project directory', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'create-tekir-app-'))
+    try {
+      const target = join(cwd, 'existing')
+      mkdirSync(target)
+      writeFileSync(join(target, 'keep.txt'), 'user data')
+      const result = Bun.spawnSync(
+        [process.execPath, entry, 'existing', '--template=minimal'],
+        { cwd }
+      )
+      expect(result.exitCode).toBe(1)
+      expect(result.stdout.toString()).toContain('already exists and is not empty')
+      expect(readFileSync(join(target, 'keep.txt'), 'utf8')).toBe('user data')
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
   })
 })

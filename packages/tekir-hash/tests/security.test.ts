@@ -211,4 +211,16 @@ describe('ScryptDriver — corrupt parameters', () => {
     expect(await d.verify('password', hash)).toBe(true)
     expect(await d.verify('wrong', hash)).toBe(false)
   })
+
+  test('rejects attacker-controlled resource-exhaustion parameters before calling scrypt', async () => {
+    const driver = new ScryptDriver()
+    const huge = '$scrypt$N=1073741824,r=8,p=1,keylen=64$aa$' + '00'.repeat(64)
+    expect(await driver.verify('password', huge)).toBe(false)
+  })
+
+  test('rejects oversized derived-key lengths before allocating', async () => {
+    const driver = new ScryptDriver()
+    const huge = '$scrypt$N=16384,r=8,p=1,keylen=100000000$aa$00'
+    expect(await driver.verify('password', huge)).toBe(false)
+  })
 })

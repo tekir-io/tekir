@@ -1,6 +1,6 @@
 {
   "name": "@tekir/next",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Next.js integration middleware for tekir",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/core": "^0.1.34"
+    "@tekir/core": "^0.1.35"
   },
   "peerDependencies": {
     "next": ">=14.0.0 <17.0.0"

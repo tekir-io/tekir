@@ -1,6 +1,24 @@
 import type { DiskDriver, DiskConfig, FileMetadata, PutOptions, SignedUrlOptions } from '../types'
 import { sha256Hex, hmacSha256, hmacSha256Raw, hmacSha256Hex } from '../crypto'
 
+/** AWS SigV4's stricter RFC3986 encoding (encodeURIComponent leaves !'()*). */
+function awsEncode(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (c) =>
+    `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  )
+}
+
+function encodeKey(key: string): string {
+  return key.split('/').map(awsEncode).join('/')
+}
+
+function canonicalQuery(entries: Array<[string, string]>): string {
+  return entries
+    .map(([key, value]) => [awsEncode(key), awsEncode(value)] as const)
+    .sort(([ak, av], [bk, bv]) => (ak < bk ? -1 : ak > bk ? 1 : av < bv ? -1 : av > bv ? 1 : 0))
+    .map(([key, value]) => `${key}=${value}`)
+    .join('&')
+}
 
 /**
  * Disk driver for Amazon S3 and S3-compatible storage (e.g. Cloudflare R2).
@@ -39,7 +57,7 @@ export class S3Driver implements DiskDriver {
       this.region = config.region
       this.accessKeyId = config.accessKeyId
       this.secretAccessKey = config.secretAccessKey
-      this.endpoint = config.endpoint || `https://s3.${config.region}.amazonaws.com`
+      this.endpoint = (config.endpoint || `https://s3.${config.region}.amazonaws.com`).replace(/\/+$/, '')
       this.forcePathStyle = config.forcePathStyle || false
     }
   }
@@ -50,11 +68,17 @@ export class S3Driver implements DiskDriver {
   }
 
   private getPath(key: string): string {
-    if (this.forcePathStyle) return `/${this.bucket}/${key}`
-    return `/${key}`
+    const encoded = encodeKey(key)
+    if (this.forcePathStyle) return `/${awsEncode(this.bucket)}${encoded ? `/${encoded}` : ''}`
+    return `/${encoded}`
   }
 
-  private async sign(method: string, key: string, headers: Record<string, string> = {}, _body?: string): Promise<Record<string, string>> {
+  private async sign(
+    method: string,
+    key: string,
+    headers: Record<string, string> = {},
+    query: Array<[string, string]> = [],
+  ): Promise<Record<string, string>> {
     const now = new Date()
     const dateStamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 8)
     const amzDate = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
@@ -73,7 +97,7 @@ export class S3Driver implements DiskDriver {
       .map(k => `${k}:${allHeaders[k]}\n`).join('')
 
     const canonicalRequest = [
-      method, path, '', canonicalHeaders, signedHeaderKeys, 'UNSIGNED-PAYLOAD'
+      method, path, canonicalQuery(query), canonicalHeaders, signedHeaderKeys, 'UNSIGNED-PAYLOAD'
     ].join('\n')
 
     const scope = `${dateStamp}/${this.region}/s3/aws4_request`
@@ -94,8 +118,9 @@ export class S3Driver implements DiskDriver {
   }
 
   private buildUrl(key: string): string {
-    if (this.forcePathStyle) return `${this.endpoint}/${this.bucket}/${key}`
-    return `${this.endpoint.replace('://', `://${this.bucket}.`)}/${key}`
+    const path = encodeKey(key)
+    if (this.forcePathStyle) return `${this.endpoint}/${awsEncode(this.bucket)}/${path}`
+    return `${this.endpoint.replace('://', `://${this.bucket}.`)}/${path}`
   }
 
   /**
@@ -184,7 +209,8 @@ export class S3Driver implements DiskDriver {
    */
   async delete(key: string): Promise<void> {
     const headers = await this.sign('DELETE', key)
-    await fetch(this.buildUrl(key), { method: 'DELETE', headers })
+    const res = await fetch(this.buildUrl(key), { method: 'DELETE', headers })
+    if (!res.ok) throw new Error(`S3 DELETE failed: ${res.status} ${await res.text()}`)
   }
 
   /**
@@ -194,11 +220,11 @@ export class S3Driver implements DiskDriver {
    * @returns `true` if the object exists, `false` otherwise.
    */
   async exists(key: string): Promise<boolean> {
-    try {
-      const headers = await this.sign('HEAD', key)
-      const res = await fetch(this.buildUrl(key), { method: 'HEAD', headers })
-      return res.ok
-    } catch { return false }
+    const headers = await this.sign('HEAD', key)
+    const res = await fetch(this.buildUrl(key), { method: 'HEAD', headers })
+    if (res.status === 404) return false
+    if (!res.ok) throw new Error(`S3 HEAD failed while checking existence: ${res.status}`)
+    return true
   }
 
   /**
@@ -211,7 +237,7 @@ export class S3Driver implements DiskDriver {
    */
   async copy(source: string, destination: string): Promise<void> {
     const headers = await this.sign('PUT', destination, {
-      'x-amz-copy-source': `/${this.bucket}/${source}`,
+      'x-amz-copy-source': `/${awsEncode(this.bucket)}/${encodeKey(source)}`,
     })
     const res = await fetch(this.buildUrl(destination), { method: 'PUT', headers })
     if (!res.ok) throw new Error(`S3 COPY failed: ${res.status}`)
@@ -225,6 +251,7 @@ export class S3Driver implements DiskDriver {
    * @returns Resolves when the move is complete.
    */
   async move(source: string, destination: string): Promise<void> {
+    if (source === destination) return
     await this.copy(source, destination)
     await this.delete(source)
   }
@@ -240,9 +267,11 @@ export class S3Driver implements DiskDriver {
     const headers = await this.sign('HEAD', key)
     const res = await fetch(this.buildUrl(key), { method: 'HEAD', headers })
     if (!res.ok) throw new Error(`S3 HEAD failed: ${res.status}`)
+    const lastModified = res.headers.get('last-modified')
+    if (!lastModified) throw new Error('S3 HEAD response is missing Last-Modified')
     return {
       size: Number(res.headers.get('content-length') || 0),
-      lastModified: new Date(res.headers.get('last-modified') || ''),
+      lastModified: new Date(lastModified),
       contentType: res.headers.get('content-type') || undefined,
       etag: res.headers.get('etag') || undefined,
     }
@@ -272,6 +301,9 @@ export class S3Driver implements DiskDriver {
    * ```
    */
   async getSignedUrl(key: string, options: SignedUrlOptions): Promise<string> {
+    if (!Number.isInteger(options.expiresIn) || options.expiresIn < 1 || options.expiresIn > 604800) {
+      throw new Error('S3 signed URL expiresIn must be an integer between 1 and 604800 seconds')
+    }
     const now = new Date()
     const dateStamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 8)
     const amzDate = now.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
@@ -279,15 +311,16 @@ export class S3Driver implements DiskDriver {
     const host = this.getHost()
     const path = this.getPath(key)
 
-    const params = new URLSearchParams({
-      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
-      'X-Amz-Credential': `${this.accessKeyId}/${scope}`,
-      'X-Amz-Date': amzDate,
-      'X-Amz-Expires': String(options.expiresIn),
-      'X-Amz-SignedHeaders': 'host',
-    })
+    const params: Array<[string, string]> = [
+      ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
+      ['X-Amz-Credential', `${this.accessKeyId}/${scope}`],
+      ['X-Amz-Date', amzDate],
+      ['X-Amz-Expires', String(options.expiresIn)],
+      ['X-Amz-SignedHeaders', 'host'],
+    ]
+    const query = canonicalQuery(params)
 
-    const canonicalRequest = `GET\n${path}\n${params.toString()}\nhost:${host}\n\nhost\nUNSIGNED-PAYLOAD`
+    const canonicalRequest = `GET\n${path}\n${query}\nhost:${host}\n\nhost\nUNSIGNED-PAYLOAD`
 
     const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${await sha256Hex(canonicalRequest)}`
 
@@ -297,8 +330,7 @@ export class S3Driver implements DiskDriver {
     const kSigning = await hmacSha256Raw(kService, 'aws4_request')
     const signature = await hmacSha256Hex(kSigning, stringToSign)
 
-    params.set('X-Amz-Signature', signature)
-    return `${this.buildUrl(key)}?${params.toString()}`
+    return `${this.buildUrl(key)}?${query}&X-Amz-Signature=${signature}`
   }
 
   /**
@@ -314,16 +346,17 @@ export class S3Driver implements DiskDriver {
     // IsTruncated/NextContinuationToken until the listing is exhausted
     // instead of silently dropping everything past the first page.
     do {
-      let query = '?list-type=2'
-      if (prefix) query += `&prefix=${encodeURIComponent(prefix)}`
-      if (continuationToken) query += `&continuation-token=${encodeURIComponent(continuationToken)}`
+      const params: Array<[string, string]> = [['list-type', '2']]
+      if (prefix) params.push(['prefix', prefix])
+      if (continuationToken) params.push(['continuation-token', continuationToken])
+      const query = canonicalQuery(params)
       const url = this.forcePathStyle
-        ? `${this.endpoint}/${this.bucket}${query}`
-        : `${this.endpoint.replace('://', `://${this.bucket}.`)}${query}`
+        ? `${this.endpoint}/${awsEncode(this.bucket)}?${query}`
+        : `${this.endpoint.replace('://', `://${this.bucket}.`)}?${query}`
 
-      const headers = await this.sign('GET', '', {})
+      const headers = await this.sign('GET', '', {}, params)
       const res = await fetch(url, { headers })
-      if (!res.ok) break
+      if (!res.ok) throw new Error(`S3 LIST failed: ${res.status} ${await res.text()}`)
       const text = await res.text()
 
       const regex = /<Key>([^<]*)<\/Key>/g

@@ -1267,6 +1267,17 @@ describe('events() async iterable', () => {
 })
 
 describe('error isolation defaults', () => {
+  test('emitSync observes rejected thenables that are not native Promises', async () => {
+    const emitter = new Emitter<TestEvents>()
+    const errors: string[] = []
+    emitter.onError((_event, error) => errors.push(error.message))
+    emitter.on('count', (() => ({ then: (_resolve: unknown, reject: (e: Error) => void) => reject(new Error('thenable-fail')) })) as any)
+    emitter.emitSync('count', 1)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(errors).toEqual(['thenable-fail'])
+  })
+
   test('one bad listener does not stop the others (no onError)', async () => {
     const emitter = new Emitter<TestEvents>()
     emitter.setMaxListeners(0)

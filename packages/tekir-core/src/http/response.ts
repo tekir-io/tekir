@@ -9,6 +9,17 @@ import {
   timingSafeEqual,
 } from 'node:crypto'
 
+interface ResponseBuilderState {
+  finalize(response: Response): Response
+}
+
+const responseBuilderStates = new WeakMap<TekirResponse, ResponseBuilderState>()
+
+/** Apply state staged on a Tekir response builder to an arbitrary result. */
+export function finalizeResponse(builder: TekirResponse, outgoing: Response): Response {
+  return responseBuilderStates.get(builder)?.finalize(outgoing) ?? outgoing
+}
+
 function hmacSign(value: string, secret: string): string {
   return createHmac('sha256', secret).update(value).digest('base64url')
 }
@@ -152,49 +163,96 @@ export function createResponse(request?: Request, options?: { trustedHosts?: str
     ? options.trustedHosts.map(h => h.trim().toLowerCase()).filter(Boolean)
     : _trustedHosts
   let statusCode = 200
+  let statusExplicit = false
   const headers = new Headers()
   const cookieJar: string[] = []
   const finishCallbacks: (() => void)[] = []
+  const builtResponses = new WeakSet<Response>()
+  let finishScheduled = false
+
+  function scheduleFinish(): void {
+    if (finishScheduled || finishCallbacks.length === 0) return
+    finishScheduled = true
+    queueMicrotask(() => {
+      for (const callback of finishCallbacks) {
+        try { callback() } catch {}
+      }
+    })
+  }
+
+  function snapshotHeaders(base?: Headers): Headers {
+    const merged = new Headers(base)
+    headers.forEach((value, key) => merged.set(key, value))
+    for (const cookie of cookieJar) merged.append('Set-Cookie', cookie)
+    return merged
+  }
+
+  function finalizeOutgoing(outgoing: Response): Response {
+    if (builtResponses.has(outgoing)) {
+      scheduleFinish()
+      return outgoing
+    }
+    let hasStagedHeaders = false
+    headers.forEach(() => { hasStagedHeaders = true })
+    if (!statusExplicit && !hasStagedHeaders && cookieJar.length === 0) {
+      scheduleFinish()
+      return outgoing
+    }
+    const status = statusExplicit ? statusCode : outgoing.status
+    const body = status === 204 || status === 205 || status === 304 ? null : outgoing.body
+    const finalized = new Response(body, {
+      status,
+      statusText: outgoing.statusText,
+      headers: snapshotHeaders(outgoing.headers),
+    })
+    builtResponses.add(finalized)
+    scheduleFinish()
+    return finalized
+  }
+
+  function own(response: Response): Response {
+    builtResponses.add(response)
+    scheduleFinish()
+    return response
+  }
 
   function buildResponse(data: any, contentType?: string): Response {
-    for (const cookie of cookieJar) {
-      headers.append('Set-Cookie', cookie)
-    }
-
     if (data === null || data === undefined) {
-      return new Response(null, { status: statusCode, headers })
+      return own(new Response(null, { status: statusCode, headers: snapshotHeaders() }))
     }
 
     if (data instanceof Response) {
-      return data
+      return finalizeOutgoing(data)
     }
 
     if (data instanceof ReadableStream) {
-      return new Response(data, { status: statusCode, headers })
+      return own(new Response(data, { status: statusCode, headers: snapshotHeaders() }))
     }
 
     if (typeof data === 'object') {
       headers.set('Content-Type', contentType || 'application/json')
-      return new Response(JSON.stringify(data), { status: statusCode, headers })
+      return own(new Response(JSON.stringify(data), { status: statusCode, headers: snapshotHeaders() }))
     }
 
     if (typeof data === 'string') {
       const isHtml = data.trimStart().startsWith('<')
       headers.set('Content-Type', contentType || (isHtml ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8'))
-      return new Response(data, { status: statusCode, headers })
+      return own(new Response(data, { status: statusCode, headers: snapshotHeaders() }))
     }
 
     headers.set('Content-Type', 'text/plain; charset=utf-8')
-    return new Response(String(data), { status: statusCode, headers })
+    return own(new Response(String(data), { status: statusCode, headers: snapshotHeaders() }))
   }
 
   function jsonResponse(data: any, status: number): Response {
     statusCode = status
+    statusExplicit = true
     return buildResponse(data, 'application/json')
   }
 
   function redirectResponse(url: string, status: number): Response {
     statusCode = status
+    statusExplicit = true
     headers.set('Location', url)
     return buildResponse(null)
   }
@@ -207,14 +265,7 @@ export function createResponse(request?: Request, options?: { trustedHosts?: str
    * response while preserving its body so streaming stays zero-copy.
    */
   function withResponseHeaders(fileResp: Response): Response {
-    const merged = new Headers(fileResp.headers)
-    headers.forEach((value, key) => merged.set(key, value))
-    for (const cookie of cookieJar) merged.append('Set-Cookie', cookie)
-    return new Response(fileResp.body, {
-      status: fileResp.status,
-      statusText: fileResp.statusText,
-      headers: merged,
-    })
+    return finalizeOutgoing(fileResp)
   }
 
   // Callable redirect with `.back()` attached. `.back()` reads the request's
@@ -244,13 +295,13 @@ export function createResponse(request?: Request, options?: { trustedHosts?: str
 
   const response: TekirResponse = {
     // Core
-    status(code: number) { statusCode = code; return response },
+    status(code: number) { statusCode = code; statusExplicit = true; return response },
     json(data?: any) { return buildResponse(data, 'application/json') },
     send(data?: any) { return buildResponse(data) },
     html(data: string) { return buildResponse(data, 'text/html; charset=utf-8') },
     text(data: string) { return buildResponse(data, 'text/plain; charset=utf-8') },
     redirect,
-    stream(readable: ReadableStream) { return new Response(readable, { status: statusCode, headers }) },
+    stream(readable: ReadableStream) { return buildResponse(readable) },
     async download(filePath: string) {
       const safeName = (filePath.split('/').pop() || 'download').replace(/["\\]/g, '_')
       headers.set('Content-Disposition', `attachment; filename="${safeName}"`)
@@ -267,7 +318,7 @@ export function createResponse(request?: Request, options?: { trustedHosts?: str
       let result = ''
       if (data.event) result += `event: ${stripNewlines(data.event)}\n`
       if (data.id) result += `id: ${stripNewlines(data.id)}\n`
-      if (data.retry) result += `retry: ${stripNewlines(String(data.retry))}\n`
+      if (data.retry !== undefined) result += `retry: ${stripNewlines(String(data.retry))}\n`
       const payload = typeof data.data === 'object' ? JSON.stringify(data.data) : stripNewlines(String(data.data))
       result += `data: ${payload}\n\n`
       return result
@@ -317,13 +368,13 @@ export function createResponse(request?: Request, options?: { trustedHosts?: str
     ok(data?: any) { return jsonResponse(data, 200) },
     created(data?: any) { return jsonResponse(data, 201) },
     accepted(data?: any) { return jsonResponse(data, 202) },
-    noContent() { statusCode = 204; return buildResponse(null) },
+    noContent() { statusCode = 204; statusExplicit = true; return buildResponse(null) },
 
     // 3xx Redirection
     movedPermanently(url: string) { return redirectResponse(url, 301) },
     found(url: string) { return redirectResponse(url, 302) },
     seeOther(url: string) { return redirectResponse(url, 303) },
-    notModified() { statusCode = 304; return buildResponse(null) },
+    notModified() { statusCode = 304; statusExplicit = true; return buildResponse(null) },
     temporaryRedirect(url: string) { return redirectResponse(url, 307) },
     permanentRedirect(url: string) { return redirectResponse(url, 308) },
 
@@ -351,6 +402,8 @@ export function createResponse(request?: Request, options?: { trustedHosts?: str
     serviceUnavailable(data?: any) { return jsonResponse(data ?? { message: 'Service Unavailable' }, 503) },
     gatewayTimeout(data?: any) { return jsonResponse(data ?? { message: 'Gateway Timeout' }, 504) },
   }
+
+  responseBuilderStates.set(response, { finalize: finalizeOutgoing })
 
   return response
 }

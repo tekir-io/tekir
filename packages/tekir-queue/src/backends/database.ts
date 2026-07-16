@@ -222,7 +222,7 @@ export class DatabaseBackend implements QueueBackend {
    *
    * @param id - The job ID.
    */
-  async markCompleted(id: string): Promise<void> {
+  async markCompleted(id: string, _record?: JobRecord): Promise<void> {
     await this._ensureTable()
     await this.db.run(`UPDATE jobs SET status = 'completed', claim_token = NULL, reserved_at = NULL WHERE id = ?`, [id])
   }

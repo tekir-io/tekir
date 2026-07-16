@@ -3,6 +3,6 @@ export default {
   origin: true,
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
   headers: true,
-  credentials: true,
+  credentials: false,
   maxAge: 86400,
 }

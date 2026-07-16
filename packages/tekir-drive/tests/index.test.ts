@@ -699,6 +699,19 @@ describe('MemoryDriver — path edge cases', () => {
     await expect(drive.move('nonexistent.txt', 'dest.txt')).rejects.toThrow('File not found')
   })
 
+  test('move to exactly the same path is a no-op', async () => {
+    await drive.put('same-path.txt', 'content')
+    await drive.move('same-path.txt', 'same-path.txt')
+    expect(await drive.getString('same-path.txt')).toBe('content')
+  })
+
+  test('get returns a defensive buffer copy', async () => {
+    await drive.put('immutable.bin', Buffer.from([1, 2, 3]))
+    const first = await drive.get('immutable.bin')
+    first[0] = 99
+    expect([...await drive.get('immutable.bin')]).toEqual([1, 2, 3])
+  })
+
   test('getMetadata after overwrite reflects new size', async () => {
     await drive.put('grow.txt', 'short')
     await drive.put('grow.txt', 'much longer content here')

@@ -1,6 +1,6 @@
 // Process spawning — Bun.spawn on Bun, child_process on Node.js
 
-import { isBun } from './detect'
+import { isBun } from './detect.js'
 
 export interface SpawnOptions {
   cmd: string[]

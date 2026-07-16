@@ -102,4 +102,20 @@ describe('DatadogTransport buffer / error visibility', () => {
     t.write(entry())
     expect(fetchSpy.mock.calls[0][0]).toBe('https://http-intake.logs.datadoghq.com/api/v2/logs')
   })
+
+  test('extra fields cannot forge Datadog status, service, or message', () => {
+    let body: any
+    globalThis.fetch = (async (_url: string, init: any) => {
+      body = JSON.parse(init.body)
+      return new Response('', { status: 202 })
+    }) as any
+    const transport = new DatadogTransport({ apiKey: 'k', service: 'trusted', batchSize: 1, flushInterval: 0 })
+    transport.write({
+      level: 'error', name: 'app', msg: 'real message',
+      status: 'info', service: 'forged', message: 'forged',
+    } as any)
+    expect(body[0].status).toBe('error')
+    expect(body[0].service).toBe('trusted')
+    expect(body[0].message).toBe('real message')
+  })
 })

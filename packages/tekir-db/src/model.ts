@@ -1,4 +1,5 @@
-import { eq, and, not, inArray, count as countFn, sum as sumFn, avg as avgFn, min as minFn, max as maxFn, sql } from 'drizzle-orm'
+import { eq, and, inArray, isNull, isNotNull, count as countFn, sum as sumFn, avg as avgFn, min as minFn, max as maxFn, sql } from 'drizzle-orm'
+import { sqliteTable, text, integer, real, blob } from 'drizzle-orm/sqlite-core'
 import { NotFoundException } from '@tekir/core'
 import type {
   CastType,
@@ -29,8 +30,6 @@ function toSnakeCase(str: string): string {
 }
 
 function buildDrizzleTable(tableName: string, schema: ModelSchema) {
-
-  const { sqliteTable, text, integer, real, blob } = require('drizzle-orm/sqlite-core')
   const columns: Record<string, any> = {}
   for (const [name, def] of Object.entries(schema)) {
     const colName = toSnakeCase(name)
@@ -249,7 +248,10 @@ function getDb() {
 }
 
 function db(m: typeof BaseModel) {
-  const d = getDb()
+  // A model may be bound explicitly, which is useful for multi-app processes,
+  // workers, and tests where a process-global application container is not a
+  // safe source of request-independent database state.
+  const d = m.database ?? getDb()
   return m.connection ? d.connection(m.connection) : d
 }
 function whereEq(m: typeof BaseModel, col: string, val: any) { return eq(m.$table[col], val) }
@@ -323,7 +325,7 @@ function filterMassAssignment(m: typeof BaseModel, values: Record<string, unknow
 }
 function baseQuery(m: typeof BaseModel) {
   let q = db(m).select().from(m.$table)
-  if (m.softDeletes) q = q.where(eq(m.$table.deletedAt, null))
+  if (m.softDeletes) q = q.where(isNull(m.$table.deletedAt))
   for (const fn of Object.values(m.globalScopes)) fn(q)
   return q
 }
@@ -420,6 +422,14 @@ export class BaseModel {
   static primaryKey = 'id'
   /** Database connection name (optional) */
   static connection?: string
+  /** Explicit database manager override; otherwise the app container is used. */
+  static database?: any
+
+  /** Bind this model (and subclasses that inherit the binding) to a database manager. */
+  static useDatabase(database: any): typeof BaseModel {
+    this.database = database
+    return this
+  }
 
   /**
    * Enable soft deletes. Requires a `deletedAt` column in schema.
@@ -677,7 +687,7 @@ export class BaseModel {
    */
   static async count(): Promise<number> {
     let q = db(this).select({ value: countFn() }).from(this.$table)
-    if (this.softDeletes) q = q.where(eq(this.$table.deletedAt, null))
+    if (this.softDeletes) q = q.where(isNull(this.$table.deletedAt))
     return q.get()?.value ?? 0
   }
 
@@ -688,7 +698,7 @@ export class BaseModel {
    */
   static async countBy(col: string, value: unknown): Promise<number> {
     let q = db(this).select({ value: countFn() }).from(this.$table).where(whereEq(this, col, value))
-    if (this.softDeletes) q = q.where(eq(this.$table.deletedAt, null))
+    if (this.softDeletes) q = q.where(isNull(this.$table.deletedAt))
     return q.get()?.value ?? 0
   }
 
@@ -710,7 +720,7 @@ export class BaseModel {
    */
   static async sum(col: string): Promise<number> {
     let q = db(this).select({ value: sumFn(this.$column(col)) }).from(this.$table)
-    if (this.softDeletes) q = q.where(eq(this.$table.deletedAt, null))
+    if (this.softDeletes) q = q.where(isNull(this.$table.deletedAt))
     return q.get()?.value ?? 0
   }
 
@@ -721,7 +731,7 @@ export class BaseModel {
    */
   static async avg(col: string): Promise<number> {
     let q = db(this).select({ value: avgFn(this.$column(col)) }).from(this.$table)
-    if (this.softDeletes) q = q.where(eq(this.$table.deletedAt, null))
+    if (this.softDeletes) q = q.where(isNull(this.$table.deletedAt))
     return q.get()?.value ?? 0
   }
 
@@ -732,7 +742,7 @@ export class BaseModel {
    */
   static async min(col: string): Promise<unknown> {
     let q = db(this).select({ value: minFn(this.$column(col)) }).from(this.$table)
-    if (this.softDeletes) q = q.where(eq(this.$table.deletedAt, null))
+    if (this.softDeletes) q = q.where(isNull(this.$table.deletedAt))
     return q.get()?.value ?? null
   }
 
@@ -743,7 +753,7 @@ export class BaseModel {
    */
   static async max(col: string): Promise<unknown> {
     let q = db(this).select({ value: maxFn(this.$column(col)) }).from(this.$table)
-    if (this.softDeletes) q = q.where(eq(this.$table.deletedAt, null))
+    if (this.softDeletes) q = q.where(isNull(this.$table.deletedAt))
     return q.get()?.value ?? null
   }
 
@@ -762,7 +772,7 @@ export class BaseModel {
     const pp = Number.isFinite(perPage) && Math.floor(perPage) >= 1 ? Math.floor(perPage) : 20
     await runHooks(this, 'beforePaginate', { page: p, perPage: pp })
     let countQ = db(this).select({ value: countFn() }).from(this.$table)
-    if (this.softDeletes) countQ = countQ.where(eq(this.$table.deletedAt, null))
+    if (this.softDeletes) countQ = countQ.where(isNull(this.$table.deletedAt))
     const total = countQ.get()?.value ?? 0
     const rows = baseQuery(this).limit(pp).offset((p - 1) * pp).all()
     const lastPage = total === 0 ? 0 : Math.ceil(total / pp)
@@ -821,7 +831,7 @@ export class BaseModel {
    */
   static onlyTrashed() {
     return db(this).select().from(this.$table)
-      .where(not(eq(this.$table.deletedAt, null)))
+      .where(isNotNull(this.$table.deletedAt))
   }
 
   // ── Static Write Methods ──────────────────────────────

@@ -643,6 +643,54 @@ describe('response.redirect.back — compiled path', () => {
   })
 })
 
+describe('stateful response helpers — compiled path', () => {
+  function stageLoginResponse(response: any) {
+    response.header('X-Auth-Flow', 'login')
+    response.cookie('access_token', 'db-token', { httpOnly: true, sameSite: 'Lax' })
+  }
+
+  test('preserves headers and cookies staged by a delegated helper', async () => {
+    const { server, router } = createServer()
+    router.post('/login', ({ response }: any) => {
+      stageLoginResponse(response)
+      return response.ok({ authenticated: true })
+    })
+
+    const res = await server.handle(new Request('http://x/login', { method: 'POST' }))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('X-Auth-Flow')).toBe('login')
+    expect(res.headers.get('Set-Cookie')).toContain('access_token=db-token')
+    expect(res.headers.get('Set-Cookie')).toContain('HttpOnly')
+  })
+
+  test('exposes response methods that do not exist on the static fast helper', async () => {
+    const { server, router } = createServer()
+    router.get('/helpers', ({ response }: any) => {
+      response.signedCookie('session', 'value', 'secret')
+      return response.ok({
+        attachment: typeof response.attachment,
+        encryptedCookie: typeof response.encryptedCookie,
+      })
+    })
+
+    const res = await server.handle(new Request('http://x/helpers'))
+    expect(await res.json()).toEqual({ attachment: 'function', encryptedCookie: 'function' })
+    expect(res.headers.get('Set-Cookie')).toContain('session=')
+  })
+
+  test('clearCookie is applied to the returned response', async () => {
+    const { server, router } = createServer()
+    router.post('/logout', ({ response }: any) => {
+      response.clearCookie('access_token')
+      return response.noContent()
+    })
+
+    const res = await server.handle(new Request('http://x/logout', { method: 'POST' }))
+    expect(res.status).toBe(204)
+    expect(res.headers.get('Set-Cookie')).toContain('access_token=; Max-Age=0; Path=/')
+  })
+})
+
 describe('OPTIONS preflight on method-mismatched routes', () => {
   test('synthetic OPTIONS handler responds 204 even when path has only POST', async () => {
     const { server, router } = createServer()

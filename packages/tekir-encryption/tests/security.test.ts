@@ -183,4 +183,21 @@ describe('Encryption — legacy format compatibility', () => {
     const enc = new Encryption(APP)
     expect(await enc.decryptString(legacyCipher)).toBe('legacy-secret')
   })
+
+  test('decrypts a legacy ciphertext whose IV starts with the v1 version byte', async () => {
+    const appKey = 'legacy-version-collision-key-123'
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`tekir-salt:${appKey}`))
+    const salt = new Uint8Array(digest).slice(0, 16)
+    const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(appKey), 'PBKDF2', false, ['deriveKey'])
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 200_000, hash: 'SHA-256' }, material,
+      { name: 'AES-GCM', length: 256 }, false, ['encrypt'],
+    )
+    const iv = new Uint8Array(12)
+    iv[0] = 1
+    crypto.getRandomValues(iv.subarray(1))
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode('legacy-collision'))
+    const payload = Buffer.concat([Buffer.from(iv), Buffer.from(cipher)]).toString('base64')
+    expect(await new Encryption(appKey).decryptString(payload)).toBe('legacy-collision')
+  })
 })

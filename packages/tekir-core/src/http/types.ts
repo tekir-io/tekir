@@ -14,7 +14,7 @@ export interface HttpContext {
   params: Record<string, string>
   query: Record<string, string | string[]>
   headers: Record<string, string>
-  cookies: Record<string, string>
+  cookies: { get(name: string): string | null | undefined }
   body: Record<string, unknown>
   /**
    * Error thrown while parsing the request body, if any. Set when the
@@ -66,8 +66,10 @@ export interface TekirRequest {
   url: string
   method: string
   path: string
+  host: string
   hostname: string
   protocol: string
+  origin: string
   ip: string
   ips: string[]
   completeUrl: string
@@ -88,7 +90,7 @@ export interface TekirRequest {
   is(types: string[]): boolean
   cookie(name: string): string | null
   signedCookie(name: string, secret: string): string | null
-  cookies(): any // Bun.CookieMap
+  cookies(): { get(name: string): string | null | undefined }
   id(): string
   matchesRoute(name: string): boolean
 }

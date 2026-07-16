@@ -109,3 +109,21 @@ describe('CSRF unsigned mode still works (no secret)', () => {
     expect(called).toBe(true)
   })
 })
+
+describe('CSRF exceptPaths boundaries', () => {
+  test('does not exempt a sibling route that merely shares the prefix', async () => {
+    const ctx = makeCtx()
+    ctx.request.url = 'http://localhost/api/authenticate'
+    await expect(csrf({ exceptPaths: ['/api/auth'] })(ctx, noop)).rejects.toMatchObject({ status: 403 })
+  })
+
+  test('exempts the exact path and its descendants', async () => {
+    for (const path of ['/api/auth', '/api/auth/callback']) {
+      const ctx = makeCtx()
+      ctx.request.url = `http://localhost${path}`
+      let called = false
+      await csrf({ exceptPaths: ['/api/auth/'] })(ctx, async () => { called = true })
+      expect(called).toBe(true)
+    }
+  })
+})

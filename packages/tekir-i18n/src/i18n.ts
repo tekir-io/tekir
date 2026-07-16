@@ -221,7 +221,7 @@ export class I18n {
   middleware() {
     return async (ctx: any, next: () => Promise<void>) => {
       const accept = ctx.request?.header?.('accept-language') || ctx.headers?.['accept-language'] || ''
-      const preferred = accept.split(',').map((l: string) => l.split(';')[0].trim().split('-')[0])[0]
+      const preferred = this.resolveAcceptedLocale(String(accept))
 
       if (preferred && this.locales[preferred]) {
         ctx.locale = preferred
@@ -234,6 +234,33 @@ export class I18n {
       ctx.i18n = this
       await next()
     }
+  }
+
+  /** Select the highest-quality supported locale from an Accept-Language value. */
+  private resolveAcceptedLocale(header: string): string | undefined {
+    const available = new Map(
+      Object.keys(this.locales).map((locale) => [locale.toLowerCase(), locale])
+    )
+
+    const candidates = header.split(',').map((part, index) => {
+      const [rawTag, ...parameters] = part.trim().split(';')
+      let quality = 1
+      for (const parameter of parameters) {
+        const match = parameter.trim().match(/^q\s*=\s*(0(?:\.\d+)?|1(?:\.0+)?)$/i)
+        if (match) quality = Number(match[1])
+      }
+      return { tag: rawTag.trim().toLowerCase(), quality, index }
+    }).filter(({ tag, quality }) => tag.length > 0 && quality > 0)
+
+    candidates.sort((a, b) => b.quality - a.quality || a.index - b.index)
+    for (const { tag } of candidates) {
+      if (tag === '*') return this.locales[this.defaultLocale] ? this.defaultLocale : undefined
+      const exact = available.get(tag)
+      if (exact) return exact
+      const base = available.get(tag.split('-')[0])
+      if (base) return base
+    }
+    return undefined
   }
 }
 

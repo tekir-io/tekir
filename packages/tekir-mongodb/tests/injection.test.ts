@@ -161,3 +161,49 @@ describe('BaseModel.findById id validation', () => {
     expect(await M.findById('507f1f77bcf86cd799439011')).not.toBeNull()
   })
 })
+
+describe('BaseModel write id validation', () => {
+  let calls = 0
+  class M extends BaseModel {
+    static modelName = 'WriteIdUser'
+    static schema = { name: String }
+    static config = { softDeletes: true }
+    static getModel() {
+      return {
+        findByIdAndUpdate: () => { calls++; return { lean: async () => ({}) } },
+        findByIdAndDelete: () => { calls++; return {} },
+      }
+    }
+  }
+
+  test('operator objects never reach update/delete/restore/forceDelete', async () => {
+    calls = 0
+    const injected = { $gt: '' } as any
+    expect(await M.update(injected, { name: 'x' })).toBeNull()
+    expect(await M.delete(injected)).toBe(false)
+    expect(await M.restore(injected)).toBe(false)
+    expect(await M.forceDelete(injected)).toBe(false)
+    expect(calls).toBe(0)
+  })
+})
+
+describe('BaseModel fillable prototype safety', () => {
+  test('does not mass-assign inherited properties', async () => {
+    let created: any
+    class M extends BaseModel {
+      static fillable = ['name', 'role']
+      static getModel() {
+        return {
+          create: async (data: any) => {
+            created = data
+            return { toJSON: () => data }
+          },
+        }
+      }
+    }
+    const data = Object.create({ role: 'admin' })
+    data.name = 'user'
+    await M.create(data)
+    expect(created).toEqual({ name: 'user' })
+  })
+})

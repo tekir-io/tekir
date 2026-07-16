@@ -17,13 +17,30 @@ const SENSITIVE_KEYS = /^(password|token|secret|api_?key|access_?token|refresh_?
  * Return a shallow copy of the payload with sensitive fields redacted so
  * tokens/PII are not persisted in plaintext in the notifications table.
  */
-function redactPayload(payload: Record<string, unknown>): Record<string, unknown> {
+function redactPayload(
+  payload: Record<string, unknown>,
+  seen: WeakSet<object> = new WeakSet(),
+): Record<string, unknown> {
+  if (seen.has(payload)) return { circular: '[circular]' }
+  seen.add(payload)
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(payload)) {
     if (SENSITIVE_KEYS.test(k)) out[k] = '[redacted]'
-    else if (v && typeof v === 'object' && !Array.isArray(v)) out[k] = redactPayload(v as Record<string, unknown>)
+    else if (Array.isArray(v)) {
+      out[k] = v.map((item) => {
+        if (!item || typeof item !== 'object') return item
+        if (seen.has(item)) return '[circular]'
+        if (Object.getPrototypeOf(item) !== Object.prototype && Object.getPrototypeOf(item) !== null) return item
+        return redactPayload(item as Record<string, unknown>, seen)
+      })
+    }
+    else if (v && typeof v === 'object' &&
+      (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null)) {
+      out[k] = redactPayload(v as Record<string, unknown>, seen)
+    }
     else out[k] = v
   }
+  seen.delete(payload)
   return out
 }
 

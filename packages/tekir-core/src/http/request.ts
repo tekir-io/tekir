@@ -1,6 +1,41 @@
 import type { TekirRequest } from './types'
 import { verifySignedCookieValue } from './response'
 
+type RequestWithCookies = Request & { cookies?: { get(name: string): string | undefined | null } }
+
+/**
+ * Return the runtime cookie map when available, otherwise parse the standard
+ * Cookie header. The fallback keeps request helpers working on Node and on
+ * plain Web API Request instances where Bun's `request.cookies` extension is
+ * not present.
+ */
+export function getRequestCookies(raw: Request): { get(name: string): string | undefined | null } {
+  const runtimeCookies = (raw as RequestWithCookies).cookies
+  if (runtimeCookies && typeof runtimeCookies.get === 'function') return runtimeCookies
+
+  const parsed = new Map<string, string>()
+  const header = raw.headers.get('cookie')
+  if (!header) return parsed
+
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=')
+    if (separator < 0) continue
+    const name = part.slice(0, separator).trim()
+    if (!name || parsed.has(name)) continue
+    const value = part.slice(separator + 1).trim()
+    try {
+      parsed.set(name, decodeURIComponent(value))
+    } catch {
+      parsed.set(name, value)
+    }
+  }
+  return parsed
+}
+
+export function getRequestCookie(raw: Request, name: string): string | null {
+  return getRequestCookies(raw).get(name) ?? null
+}
+
 /** Keys that would walk into `Object.prototype` if copied onto a plain object. */
 function isUnsafeKey(key: string): boolean {
   return key === '__proto__' || key === 'constructor' || key === 'prototype'
@@ -35,34 +70,45 @@ export function createRequest(
   raw: Request,
   params: Record<string, string>,
   parsedBody?: any,
-  routeName?: string
+  routeName?: string,
+  parsedQuery?: Record<string, string | string[]>
 ): TekirRequest {
-  const url = new URL(raw.url)
-  // Null-prototype map + reject pollution keys so `?__proto__[x]=y` style query
-  // strings cannot reach `Object.prototype` through `all()`/`input()`/spread.
-  const queryParams: Record<string, string | string[]> = Object.create(null)
-
-  for (const [key, value] of url.searchParams.entries()) {
-    if (isUnsafeKey(key)) continue
-    const existing = queryParams[key]
-    if (existing) {
-      queryParams[key] = Array.isArray(existing) ? [...existing, value] : [existing, value]
-    } else {
-      queryParams[key] = value
-    }
-  }
-
-  const requestId = raw.headers.get('x-request-id') || crypto.randomUUID()
+  let parsedUrl: URL | undefined
+  let queryParams = parsedQuery
+  let requestId: string | undefined
   const body: any = parsedBody
+
+  // URL and query parsing are lazy. A hot route that only reads
+  // `request.method` or `request.url` keeps the same allocation profile as
+  // the former compiler-specific request object, while every TekirRequest
+  // method remains available when a handler delegates the request elsewhere.
+  const getUrl = () => (parsedUrl ??= new URL(raw.url))
+  const getQuery = (): Record<string, string | string[]> => {
+    if (queryParams) return queryParams
+    const result: Record<string, string | string[]> = Object.create(null)
+    queryParams = result
+    for (const [key, value] of getUrl().searchParams.entries()) {
+      if (isUnsafeKey(key)) continue
+      const existing = result[key]
+      if (existing !== undefined) {
+        result[key] = Array.isArray(existing) ? [...existing, value] : [existing, value]
+      } else {
+        result[key] = value
+      }
+    }
+    return result
+  }
 
   const request: TekirRequest = {
     raw,
     url: raw.url,
-    method: raw.method,
-    path: url.pathname,
-    hostname: url.hostname,
-    protocol: url.protocol.replace(':', ''),
-    completeUrl: raw.url,
+    method: (raw as any)._spoofedMethod || raw.method,
+    get path() { return getUrl().pathname },
+    get host() { return getUrl().host },
+    get hostname() { return getUrl().hostname },
+    get protocol() { return getUrl().protocol },
+    get origin() { return getUrl().origin },
+    get completeUrl() { return raw.url },
     ip: '',
     ips: [],
 
@@ -79,13 +125,14 @@ export function createRequest(
     },
 
     all() {
-      return safeMerge(queryParams, body)
+      return safeMerge(getQuery(), body)
     },
 
     input(key: string, defaultValue?: any) {
       if (isUnsafeKey(key)) return defaultValue
       if (body && Object.prototype.hasOwnProperty.call(body, key)) return body[key]
-      if (Object.prototype.hasOwnProperty.call(queryParams, key)) return queryParams[key]
+      const query = getQuery()
+      if (Object.prototype.hasOwnProperty.call(query, key)) return query[key]
       if (Object.prototype.hasOwnProperty.call(params, key)) return params[key]
       return defaultValue
     },
@@ -104,7 +151,7 @@ export function createRequest(
       return result
     },
 
-    qs() { return queryParams },
+    qs() { return getQuery() },
     param(key: string, defaultValue?: string) { return params[key] ?? defaultValue },
     params() { return params },
     hasBody() { return body !== undefined && body !== null },
@@ -134,11 +181,11 @@ export function createRequest(
     },
 
     cookie(name: string) {
-      return (raw as any).cookies?.get(name) ?? null
+      return getRequestCookie(raw, name)
     },
 
     signedCookie(name: string, secret: string) {
-      const raw_val = (raw as any).cookies?.get(name)
+      const raw_val = getRequestCookie(raw, name)
       if (!raw_val) return null
       // Delegate to the single canonical verifier (base64url decode +
       // constant-time compare) so cookies signed by `response.signedCookie`
@@ -146,14 +193,14 @@ export function createRequest(
       // this side compared raw strings, the response side decoded base64url.
       const value = verifySignedCookieValue(raw_val, secret)
       if (value === null) return null
-      return decodeURIComponent(value)
+      return value
     },
 
     cookies() {
-      return (raw as any).cookies
+      return getRequestCookies(raw)
     },
 
-    id() { return requestId },
+    id() { return (requestId ??= raw.headers.get('x-request-id') || crypto.randomUUID()) },
 
     matchesRoute(name: string) {
       return routeName === name

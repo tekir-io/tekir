@@ -1,6 +1,6 @@
 {
   "name": "@tekir/mongodb",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MongoDB integration with models and hooks",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/core": "^0.1.34",
+    "@tekir/core": "^0.1.35",
     "mongoose": "^8.0.0"
   },
   "peerDependencies": {

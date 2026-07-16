@@ -7,6 +7,19 @@ export interface Command {
   run(args: string[], ctx: any): Promise<void>
 }
 
+function validTypeName(name: string, suffix?: string): string | null {
+  const className = suffix && !name.endsWith(suffix) ? `${name}${suffix}` : name
+  // Generated names become both file paths and executable TypeScript source.
+  // Restrict them to identifiers so `../`, quotes, and template expressions
+  // cannot escape the target directory or inject code into the scaffold.
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(className) ? className : null
+}
+
+function snakeName(name: string, suffix = ''): string {
+  const base = suffix && name.endsWith(suffix) ? name.slice(0, -suffix.length) : name
+  return base.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '')
+}
+
 
 const serveCommand: Command = {
   name: 'serve',
@@ -22,18 +35,19 @@ const makeControllerCommand: Command = {
   async run(args, { appRoot, tekir }) {
     const name = args[0]
     if (!name) { tekir.logger.error('Usage: tekir make:controller <Name>'); return }
+    const className = validTypeName(name, 'Controller')
+    if (!className) { tekir.logger.error('Controller name must be a valid TypeScript identifier'); return }
 
     const dir = join(appRoot, 'app', 'controllers')
     mkdirSync(dir, { recursive: true })
 
-    const fileName = name.replace(/Controller$/, '').replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '') + '_controller.ts'
-    const className = name.endsWith('Controller') ? name : `${name}Controller`
+    const fileName = snakeName(className, 'Controller') + '_controller.ts'
     const path = args[1] || `/${name.replace(/Controller$/, '').toLowerCase()}`
 
     const content = `import { Controller, Get, Post, Put, Delete } from '@tekir/http-decorators'
 import type { HttpContext } from '@tekir/core'
 
-@Controller('${path}')
+@Controller(${JSON.stringify(path)})
 export class ${className} {
   @Get('/')
   index({ response }: HttpContext) {
@@ -72,12 +86,14 @@ const makeMiddlewareCommand: Command = {
   async run(args, { appRoot, tekir }) {
     const name = args[0]
     if (!name) { tekir.logger.error('Usage: make:middleware <name>'); return }
+    const typeName = validTypeName(name)
+    if (!typeName) { tekir.logger.error('Middleware name must be a valid TypeScript identifier'); return }
 
     const dir = join(appRoot, 'app', 'middleware')
     mkdirSync(dir, { recursive: true })
 
-    const fileName = name.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '') + '.ts'
-    const fnName = name.charAt(0).toLowerCase() + name.slice(1)
+    const fileName = snakeName(typeName) + '.ts'
+    const fnName = typeName.charAt(0).toLowerCase() + typeName.slice(1)
 
     const content = `import type { HttpContext } from '@tekir/core'
 
@@ -96,12 +112,13 @@ const makeProviderCommand: Command = {
   async run(args, { appRoot, tekir }) {
     const name = args[0]
     if (!name) { tekir.logger.error('Usage: make:provider <Name>'); return }
+    const className = validTypeName(name, 'Provider')
+    if (!className) { tekir.logger.error('Provider name must be a valid TypeScript identifier'); return }
 
     const dir = join(appRoot, 'app', 'providers')
     mkdirSync(dir, { recursive: true })
 
-    const fileName = name.replace(/Provider$/, '').replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '') + '_provider.ts'
-    const className = name.endsWith('Provider') ? name : `${name}Provider`
+    const fileName = snakeName(className, 'Provider') + '_provider.ts'
 
     const content = `import type { App } from '@tekir/core'
 
@@ -124,12 +141,13 @@ const makeCommandCommand: Command = {
   async run(args, { appRoot, tekir }) {
     const name = args[0]
     if (!name) { tekir.logger.error('Usage: make:command <Name>'); return }
+    const className = validTypeName(name, 'Command')
+    if (!className) { tekir.logger.error('Command name must be a valid TypeScript identifier'); return }
 
     const dir = join(appRoot, 'commands')
     mkdirSync(dir, { recursive: true })
 
-    const fileName = name.replace(/Command$/, '').replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '') + '.ts'
-    const className = name.endsWith('Command') ? name : `${name}Command`
+    const fileName = snakeName(className, 'Command') + '.ts'
     const cmdName = name.replace(/Command$/, '').replace(/([A-Z])/g, ':$1').toLowerCase().replace(/^:/, '')
 
     const content = `import { BaseCommand } from '@tekir/commands'

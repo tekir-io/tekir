@@ -2,7 +2,7 @@
 // SQLite — bun:sqlite on Bun, better-sqlite3 on Node.js
 // Returns a bun:sqlite-compatible API on both runtimes
 
-import { isBun, getRequire } from './detect'
+import { isBun, getRequire } from './detect.js'
 
 /**
  * Ensure the parent directory of a SQLite file path exists. SQLite refuses

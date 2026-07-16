@@ -1644,6 +1644,35 @@ describe('ChannelManager — error handling', () => {
   })
 })
 
+describe('ChannelManager — malformed messages and topic cleanup', () => {
+  test('rejects JSON primitives without throwing', async () => {
+    const manager = new ChannelManager()
+    class TestChannel extends Channel {}
+    manager.register('test', TestChannel)
+    const handler = manager.buildHandler()
+    const ws = mockWs()
+
+    for (const payload of ['null', '42', '"text"', '[]']) {
+      await expect(handler.message!(ws, payload)).resolves.toBeUndefined()
+      expect(parse(ws.sent.at(-1)).message).toBe('Invalid message')
+    }
+  })
+
+  test('disconnect preserves colons in room names', async () => {
+    const rooms: string[] = []
+    const manager = new ChannelManager()
+    class TestChannel extends Channel {
+      onLeave(_ws: any, room: string) { rooms.push(room) }
+    }
+    manager.register('test', TestChannel)
+    const handler = manager.buildHandler()
+    const ws = mockWs()
+    await handler.message!(ws, JSON.stringify({ type: 'join', channel: 'test', room: 'tenant:room:1' }))
+    await handler.close!(ws, 1000, '')
+    expect(rooms).toEqual(['tenant:room:1'])
+  })
+})
+
 describe('PresenceStore — membership queries', () => {
   test('count returns 0 for empty topic', () => {
     const store = new PresenceStore()

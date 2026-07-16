@@ -134,7 +134,7 @@ export class MemoryBackend implements QueueBackend {
    *
    * @param id - The job ID.
    */
-  async markCompleted(id: string): Promise<void> {
+  async markCompleted(id: string, completedRecord?: JobRecord): Promise<void> {
     // Jobs are already removed from queue on pop; just record completion
     for (const q of this.queues.values()) {
       const idx = q.findIndex(r => r.id === id)
@@ -144,6 +144,12 @@ export class MemoryBackend implements QueueBackend {
         this.completed.set(id, record)
         return
       }
+    }
+    // pop() removes a claimed record from the pending array. Preserve the
+    // worker's live record so find(id) still reports successful jobs.
+    if (completedRecord) {
+      completedRecord.status = 'completed'
+      this.completed.set(id, completedRecord)
     }
   }
 

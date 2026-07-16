@@ -175,12 +175,39 @@ describe('envalid — default values', () => {
   })
 })
 
-// Required field missing throws
+// Validation failures terminate by default, so exercise them in a child Bun
+// process instead of leaving these important behavior checks skipped.
+function runValidationScript(source: string, envOverrides: Record<string, string | undefined> = {}) {
+  const env: Record<string, string | undefined> = { ...process.env, ...envOverrides }
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) delete env[key]
+  }
+  return Bun.spawnSync([process.execPath, '-e', source], {
+    cwd: new URL('../../..', import.meta.url).pathname,
+    env: env as Record<string, string>,
+  })
+}
 
-// envalid calls process.exit(1) on missing required vars — cannot test in-process
-describe.skip('envalid — required field missing', () => {
-  test('str() without default exits process when env var is absent', () => {})
-  test('num() without default exits process when env var is absent', () => {})
+const envEntry = new URL('../src/index.ts', import.meta.url).href
+
+describe('envalid — required field missing', () => {
+  test('str() without default exits process when env var is absent', () => {
+    const result = runValidationScript(
+      `import { defineEnv, str } from ${JSON.stringify(envEntry)}; defineEnv({ EV_REQUIRED_STR: str() })`,
+      { EV_REQUIRED_STR: undefined }
+    )
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr.toString()).toContain('EV_REQUIRED_STR')
+  })
+
+  test('num() without default exits process when env var is absent', () => {
+    const result = runValidationScript(
+      `import { defineEnv, num } from ${JSON.stringify(envEntry)}; defineEnv({ EV_REQUIRED_NUM: num() })`,
+      { EV_REQUIRED_NUM: undefined }
+    )
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr.toString()).toContain('EV_REQUIRED_NUM')
+  })
 })
 
 // choices validation
@@ -194,8 +221,14 @@ describe('envalid — choices validation', () => {
     delete process.env['EV_CHOICE']
   })
 
-  // envalid calls process.exit(1) on invalid choice — cannot test in-process
-  test.skip('str() with choices exits when value is not in the list', () => {})
+  test('str() with choices exits when value is not in the list', () => {
+    const result = runValidationScript(
+      `import { defineEnv, str } from ${JSON.stringify(envEntry)}; defineEnv({ EV_CHOICE_BAD: str({ choices: ['a', 'b'] }) })`,
+      { EV_CHOICE_BAD: 'not-allowed' }
+    )
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr.toString()).toContain('EV_CHOICE_BAD')
+  })
 })
 
 // defineEnv — dot notation access

@@ -184,10 +184,13 @@ export class Prompts {
       console.log(`  \x1b[90m${item.index + 1})\x1b[0m ${item.display}`)
     }
 
-    const rl = this.rl()
     // Re-prompt on invalid input rather than silently falling back to the
     // first option — a wrong default can be destructive (e.g. env selection).
     while (true) {
+      // question() closes its interface after each answer. Create a fresh one
+      // for every attempt, just like ask(), so an invalid choice can actually
+      // be re-prompted instead of querying a closed readline interface.
+      const rl = this.rl()
       const answer = await this.question(rl, `\x1b[36m>\x1b[0m `)
       const trimmed = answer.trim()
       const idx = parseInt(trimmed, 10) - 1

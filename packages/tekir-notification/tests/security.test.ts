@@ -1,5 +1,5 @@
 import { test, expect, describe, afterEach } from 'bun:test'
-import { Notification, BaseNotification, DatabaseChannel, sendPushChannel, topicForUser, type ChannelName, type PushPayload, type DatabasePayload } from '../src/index'
+import { Notification, NotificationProvider, BaseNotification, DatabaseChannel, sendPushChannel, topicForUser, type ChannelName, type PushPayload, type DatabasePayload } from '../src/index'
 
 const realFetch = globalThis.fetch
 
@@ -128,5 +128,98 @@ describe('DatabaseChannel redaction', () => {
     expect(parsed.nested.password).toBe('[redacted]')
     // Non-sensitive fields preserved.
     expect(parsed.title).toBe('T')
+  })
+
+  test('redacts sensitive keys nested inside arrays', async () => {
+    let storedData = ''
+    const db = {
+      query: async () => [],
+      execute: async (_sql: string, params: any[]) => { storedData = params[5] },
+    }
+    const channel = new DatabaseChannel(db as any)
+    class N extends BaseNotification {
+      toDatabase(): any {
+        return { type: 't', title: 'T', body: 'B', devices: [{ token: 'SECRET', name: 'phone' }] }
+      }
+    }
+    await channel.send('user-1', new N())
+    const parsed = JSON.parse(storedData)
+    expect(parsed.devices[0]).toEqual({ token: '[redacted]', name: 'phone' })
+  })
+})
+
+describe('notification configuration edge cases', () => {
+  test('real mail channel dispatches through the injected mail adapter with sanitized headers', async () => {
+    const delivered: any[] = []
+    const notify = new Notification()
+    notify.configure({
+      mail: { dispatch: async (message) => { delivered.push(message) } },
+    })
+    class N extends BaseNotification {
+      toMail(): any {
+        return {
+          to: 'user@example.com\r\nBcc: attacker@example.com',
+          subject: 'Hello\nX-Injected: yes',
+          text: 'body\nlines remain',
+        }
+      }
+    }
+    await notify.channel('mail').send('u1', new N())
+    expect(delivered).toHaveLength(1)
+    expect(delivered[0].to).toBe('user@example.comBcc: attacker@example.com')
+    expect(delivered[0].subject).toBe('HelloX-Injected: yes')
+    expect(delivered[0].text).toBe('body\nlines remain')
+  })
+
+  test('mail channel fails clearly when no mail service was injected', async () => {
+    const notify = new Notification()
+    class N extends BaseNotification {
+      toMail(): any { return { to: 'user@example.com', subject: 'Hi' } }
+    }
+    await expect(notify.channel('mail').send('u1', new N())).rejects.toThrow('No mail adapter configured')
+  })
+
+  test('defaultChannels applies when notification does not override via()', async () => {
+    const notify = new Notification()
+    notify.configure({ defaultChannels: ['push'] })
+    notify.fake()
+    class N extends BaseNotification { toPush(): PushPayload { return { title: 'T', body: 'B' } } }
+    await notify.send('u1', new N())
+    expect(notify.getSent().map((entry) => entry.channel)).toEqual(['push'])
+  })
+
+  test('provider accepts adapters exposing execute instead of run', async () => {
+    let registered: any
+    const db = { query: async () => [], execute: async () => {} }
+    const app = {
+      use(name: string) {
+        if (name === 'config') return (key: string) => key === 'notification' ? {} : undefined
+        if (name === 'db') return db
+      },
+      instance(_name: string, value: unknown) { registered = value },
+    }
+    await new NotificationProvider().register(app as any)
+    expect(registered).toBeInstanceOf(Notification)
+    expect((registered as any)._dbChannel).not.toBeNull()
+  })
+
+  test('provider injects the configured mail service', async () => {
+    let registered: any
+    const delivered: any[] = []
+    const mail = { dispatch: async (message: any) => { delivered.push(message) } }
+    const app = {
+      use(name: string) {
+        if (name === 'config') return (key: string) => key === 'notification' ? {} : undefined
+        if (name === 'mail') return mail
+        throw new Error('not registered')
+      },
+      instance(_name: string, value: unknown) { registered = value },
+    }
+    await new NotificationProvider().register(app as any)
+    class N extends BaseNotification {
+      toMail(): any { return { to: 'user@example.com', subject: 'Hi' } }
+    }
+    await registered.channel('mail').send('u1', new N())
+    expect(delivered).toHaveLength(1)
   })
 })

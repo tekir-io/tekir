@@ -124,6 +124,29 @@ describe('signedCookie round-trip', () => {
   test('tampered signature rejected', () => {
     expect(verifySignedCookieValue('hello.deadbeef', 'secret-key')).toBeNull()
   })
+
+  test('plain Web API Request reads cookies from the Cookie header', () => {
+    const raw = new Request('http://x/', {
+      headers: { cookie: 'session=hello%20world; theme=dark; token=a%3Db' },
+    })
+    const request = createRequest(raw, Object.create(null))
+
+    expect(request.cookie('session')).toBe('hello world')
+    expect(request.cookie('theme')).toBe('dark')
+    expect(request.cookie('token')).toBe('a=b')
+    expect(request.cookie('missing')).toBeNull()
+    expect(request.cookies().get('theme')).toBe('dark')
+  })
+
+  test('compiled request helper also falls back to the Cookie header', async () => {
+    const { server, router } = createServer()
+    router.get('/cookie', ({ request }: any) => ({ value: request.cookie('session') }))
+
+    const res = await server.handle(new Request('http://x/cookie', {
+      headers: { cookie: 'session=compiled%20cookie' },
+    }))
+    expect(await res.json()).toEqual({ value: 'compiled cookie' })
+  })
 })
 
 // ───────────────────────────────────────────────────────────

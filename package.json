@@ -2,13 +2,13 @@
   "name": "tekir-framework",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/bun": "^1.3.11",
-    "eslint": "^10.2.0",
-    "globals": "^17.5.0",
+    "@types/bun": "^1.3.14",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
     "oxc-parser": "^0.128.0",
-    "turbo": "^2.9.3",
-    "typescript": "^6.0.2",
-    "typescript-eslint": "^8.58.1"
+    "turbo": "^2.10.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.63.0"
   },
   "author": "dev@tekir.io",
   "private": true,
@@ -29,6 +29,9 @@
   ],
   "overrides": {
     "postcss": ">=8.5.10",
-    "esbuild": ">=0.25.0"
+    "esbuild": ">=0.28.1",
+    "brace-expansion": ">=5.0.7",
+    "form-data": ">=4.0.6",
+    "uuid": ">=11.1.1"
   }
 }

@@ -85,6 +85,13 @@ export class ChannelManager {
           return
         }
 
+        // JSON primitives (especially `null`) are valid JSON but not channel
+        // messages. Destructuring null used to throw and escape the WS handler.
+        if (!msg || typeof msg !== 'object' || Array.isArray(msg)) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Invalid message' }))
+          return
+        }
+
         const { type, channel: channelName, room, event, data, params } = msg
 
         if (!type || !channelName || !room) {
@@ -130,9 +137,13 @@ export class ChannelManager {
         // Clean up all joined channel rooms
         if (!ws.data?.__channels) return
         for (const topic of ws.data.__channels) {
-          const [, channelName, room] = topic.split(':')
-          const channel = this.channels.get(channelName)
-          if (!channel) continue
+          // Room names may contain `:`. Splitting the pub/sub topic truncated
+          // them during disconnect cleanup, so onLeave/presence notifications
+          // targeted the wrong room. Match the registered channel prefix and
+          // keep the complete remainder as the room name.
+          const resolved = this.resolveTopic(topic)
+          if (!resolved) continue
+          const { channel, channelName, room } = resolved
 
           ws.unsubscribe(topic)
 
@@ -154,6 +165,23 @@ export class ChannelManager {
         ws.data.__channels.clear()
       },
     }
+  }
+
+  private resolveTopic(topic: string): { channel: Channel; channelName: string; room: string } | null {
+    // Longest name first removes ambiguity when both `chat` and `chat:admin`
+    // are registered channel names.
+    const channelNames = [...this.channels.keys()].sort((a, b) => b.length - a.length)
+    for (const channelName of channelNames) {
+      const prefix = `channel:${channelName}:`
+      if (topic.startsWith(prefix)) {
+        return {
+          channel: this.channels.get(channelName) as Channel,
+          channelName,
+          room: topic.slice(prefix.length),
+        }
+      }
+    }
+    return null
   }
 
   private async handleJoin(

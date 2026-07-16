@@ -46,6 +46,8 @@ export class LoggerProvider {
           maxFiles: channelConfig.maxFiles,
           prefix: channelConfig.prefix,
           suffix: channelConfig.suffix,
+          maxQueueSize: channelConfig.maxQueueSize,
+          onError: channelConfig.onError,
         }))
 
       } else if (driver === 'datadog') {

@@ -23,7 +23,7 @@ export class Redis {
    */
   constructor(config: RedisConnectionConfig = {}) {
     this.config = config
-    this.prefix = config.prefix || ''
+    this.prefix = (config.prefix || '').replace(/:+$/, '')
 
     const { RedisClient } = Bun as any
     const url = config.url || process.env.REDIS_URL || 'redis://localhost:6379'
@@ -52,6 +52,9 @@ export class Redis {
   private key(k: string): string {
     return this.prefix ? `${this.prefix}:${k}` : k
   }
+
+  /** Resolve the actual Redis key after applying this connection's namespace. */
+  keyName(key: string): string { return this.key(key) }
 
   /**
    * Strip any credentials embedded in a Redis URL so it is safe to log.
@@ -116,6 +119,12 @@ export class Redis {
    * ```
    */
   async set(key: string, value: string | number): Promise<void> { await this.client.set(this.key(key), String(value)) }
+
+  /** Atomically set a value and its expiration time. */
+  async setEx(key: string, value: string | number, seconds: number): Promise<void> {
+    if (!Number.isFinite(seconds) || seconds <= 0) throw new Error('Redis setEx seconds must be a positive number')
+    await this.client.send('SET', [this.key(key), String(value), 'EX', String(Math.floor(seconds))])
+  }
 
   /**
    * Delete one or more keys.
@@ -346,6 +355,7 @@ export class Redis {
    */
   async setJSON(key: string, value: any, expireSeconds?: number): Promise<void> {
     const payload = JSON.stringify(value)
+    if (payload === undefined) throw new Error(`Redis cannot serialize undefined for key "${key}"`)
     if (expireSeconds && expireSeconds > 0) {
       // Atomic SET ... EX so a crash between writing the value and setting the
       // TTL can never leave a permanent (TTL-less) key behind.
@@ -381,19 +391,34 @@ export class Redis {
     if (cached !== null) return cached
 
     const lockKey = this.key(`${key}:__lock`)
+    const lockToken = crypto.randomUUID()
     // Try to become the single flight that computes the value. SET NX EX gives
     // a self-expiring lock so a crashed holder cannot deadlock other callers.
-    const acquired = await this.client.send('SET', [lockKey, '1', 'NX', 'EX', '10'])
+    const acquired = await this.client.send('SET', [lockKey, lockToken, 'NX', 'EX', '10'])
 
     if (acquired == null) {
-      // Another caller is computing it. Briefly poll for the populated value
-      // before falling back to computing it ourselves (lock may have expired).
-      for (let i = 0; i < 50; i++) {
+      // Another caller is computing it. Wait for the populated value, but do
+      // not run the callback without owning the lock: doing so would turn slow
+      // cache fills back into a stampede. A bounded timeout keeps callers from
+      // hanging forever if Redis itself is unhealthy.
+      for (let i = 0; i < 300; i++) {
         await new Promise(r => setTimeout(r, 100))
         const waited = await this.getJSON<T>(key)
         if (waited !== null) return waited
       }
+      throw new Error(`Redis remember timed out waiting for lock on "${key}"`)
     }
+
+    const renewScript = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('EXPIRE', KEYS[1], 10)
+end
+return 0
+`
+    const renewTimer = setInterval(() => {
+      void this.client.send('EVAL', [renewScript, '1', lockKey, lockToken]).catch(() => {})
+    }, 3000)
+    ;(renewTimer as any).unref?.()
 
     try {
       // Re-check after acquiring the lock: a racing holder may have populated it.
@@ -403,7 +428,19 @@ export class Redis {
       await this.setJSON(key, value, seconds)
       return value
     } finally {
-      await this.del(`${key}:__lock`).catch(() => {})
+      clearInterval(renewTimer)
+      // Only the owner may release the lock. A plain DEL lets a slow callback
+      // delete a successor's lock after its own 10s lease expired, reopening
+      // the stampede window. Waiters that never acquired it release nothing.
+      if (acquired != null) {
+        const releaseScript = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`
+        await this.client.send('EVAL', [releaseScript, '1', lockKey, lockToken]).catch(() => {})
+      }
     }
   }
 

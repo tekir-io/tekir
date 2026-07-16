@@ -40,16 +40,16 @@ export class DatadogTransport implements LogTransport {
     const { level, msg, time, name, ...rest } = entry
 
     const ddEntry: Record<string, unknown> = {
+      ...rest,
       message: msg ?? JSON.stringify(rest),
       status: level,
       service: this.config.service ?? name,
-      ...rest,
     }
 
     if (this.config.hostname) ddEntry.hostname = this.config.hostname
     if (this.config.tags) ddEntry.ddtags = this.config.tags
     if (this.config.source) ddEntry.ddsource = this.config.source
-    if (time) ddEntry.timestamp = new Date(time).toISOString()
+    if (time !== undefined) ddEntry.timestamp = new Date(time).toISOString()
 
     this.buffer.push(ddEntry)
 

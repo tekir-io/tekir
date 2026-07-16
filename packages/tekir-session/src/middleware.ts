@@ -34,8 +34,10 @@ import { Session } from './session'
  */
 export function session(config: SessionConfig = {}): (ctx: any, next: () => Promise<void>) => Promise<void> {
   const store = config.store || new MemorySessionStore()
-  const ttl = config.age || 7200
+  const ttl = config.age ?? 7200
   const cookieName = config.cookieName || 'tekir_session'
+  if (!Number.isFinite(ttl) || ttl <= 0) throw new Error('[@tekir/session] `age` must be a positive number of seconds')
+  if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(cookieName)) throw new Error('[@tekir/session] Invalid cookie name')
   // Secure-by-default: HttpOnly, SameSite=Lax and Secure are all on unless a
   // caller explicitly opts out. `secure` defaults to true outside of an
   // explicit non-production environment so cookies are never sent in clear
@@ -48,6 +50,14 @@ export function session(config: SessionConfig = {}): (ctx: any, next: () => Prom
     sameSite: 'lax' as const,
     secure: secureDefault,
     ...config.cookie,
+  }
+  for (const [name, value] of [['path', cookieOpts.path], ['domain', cookieOpts.domain]] as const) {
+    if (value !== undefined && /[\r\n;]/.test(value)) {
+      throw new Error(`[@tekir/session] Invalid cookie ${name}`)
+    }
+  }
+  if (cookieOpts.sameSite === 'none' && !cookieOpts.secure) {
+    throw new Error('[@tekir/session] SameSite=None cookies must also be Secure')
   }
 
   return async (ctx: any, next: () => Promise<void>) => {
@@ -90,6 +100,7 @@ export function session(config: SessionConfig = {}): (ctx: any, next: () => Prom
     // Build Set-Cookie header
     const parts = [`${cookieName}=${sess.id}`]
     parts.push(`Path=${cookieOpts.path}`)
+    if (cookieOpts.domain) parts.push(`Domain=${cookieOpts.domain}`)
     parts.push(`Max-Age=${ttl}`)
     if (cookieOpts.httpOnly) parts.push('HttpOnly')
     if (cookieOpts.sameSite) parts.push(`SameSite=${cookieOpts.sameSite}`)

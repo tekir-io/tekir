@@ -5,5 +5,5 @@ export default async function requestLogger(ctx: HttpContext, next: () => Promis
   const start = performance.now()
   await next()
   const ms = (performance.now() - start).toFixed(2)
-  logger.info(`${ctx.request.method} ${ctx.route.pattern} ${ctx.response.status} ${ms}ms`)
+  logger.info(`${ctx.request.method} ${ctx.route.pattern} ${ctx.response.getStatusCode()} ${ms}ms`)
 }

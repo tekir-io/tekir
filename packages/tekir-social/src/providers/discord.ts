@@ -84,7 +84,7 @@ export class DiscordProvider implements SocialProvider {
     const avatar = data.avatar ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png` : null
     return {
       id: data.id,
-      email: data.email || null,
+      email: data.verified === true ? (data.email || null) : null,
       name: data.global_name || data.username || null,
       firstName: data.global_name?.split(' ')[0] || null,
       lastName: data.global_name?.split(' ').slice(1).join(' ') || null,

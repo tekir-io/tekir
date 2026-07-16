@@ -1,5 +1,6 @@
 import type { AuthGuard, AuthState } from './types'
 import type { Auth } from './auth_manager'
+import { getApp } from '@tekir/core'
 
 /**
  * Mutate `ctx.auth` in place to reflect the given (user, guard) pair. Keeps
@@ -65,8 +66,6 @@ function emptyAuthState(ctx?: any): AuthState {
 }
 
 function getAuth(): Auth {
-
-  const { getApp } = require('@tekir/core')
   return getApp().use('auth')
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@tekir/encryption",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "AES encryption with key derivation utilities",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/core": "^0.1.34"
+    "@tekir/core": "^0.1.35"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

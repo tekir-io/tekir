@@ -31,10 +31,10 @@ export interface QueueBackend {
    */
   requeue(record: JobRecord): Promise<void>
   markFailed(id: string, reason: string, record?: JobRecord): Promise<void>
-  markCompleted(id: string): Promise<void>
+  markCompleted(id: string, record?: JobRecord): Promise<void>
   getFailed(): Promise<JobRecord[]>
   getById(id: string): Promise<JobRecord | null>
   requeueFailed(id: string): Promise<void>
 }
 
-export type WorkerEventName = 'completed' | 'failed' | 'started' | 'stopped'
+export type WorkerEventName = 'completed' | 'failed' | 'started' | 'stopped' | 'workerError'

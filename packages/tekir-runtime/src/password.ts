@@ -1,6 +1,6 @@
 // Password hashing — Bun.password on Bun, bcrypt/argon2 npm on Node.js
 
-import { isBun, getRequire } from './detect'
+import { isBun, getRequire } from './detect.js'
 
 /**
  * Hash a plaintext value using bcrypt.

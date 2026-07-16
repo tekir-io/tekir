@@ -283,6 +283,34 @@ describe('validate()', () => {
   })
 })
 
+describe('validate() — safeParse-only schemas', () => {
+  test('commits transformed data from safeParse success', async () => {
+    const ctx: any = { body: { count: '4' } }
+    const middleware = validate({
+      body: { safeParse: (data: any) => ({ success: true, data: { count: Number(data.count) } }) },
+    })
+    let called = false
+    await middleware(ctx, async () => { called = true })
+    expect(called).toBe(true)
+    expect(ctx.body).toEqual({ count: 4 })
+  })
+
+  test('turns safeParse failure issues into ValidationError fields', async () => {
+    const ctx: any = { body: {} }
+    const middleware = validate({
+      body: {
+        safeParse: () => ({
+          success: false,
+          error: { issues: [{ path: ['email'], message: 'Invalid email' }] },
+        }),
+      },
+    })
+    await expect(middleware(ctx, async () => {})).rejects.toMatchObject({
+      fields: { email: ['Invalid email'] },
+    })
+  })
+})
+
 // validate() — async Zod schema
 
 describe('validate() — async Zod schema', () => {

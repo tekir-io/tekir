@@ -508,11 +508,8 @@ export class QueryBuilder {
 
     if (this._joins.length) sql += ' ' + this._joins.join(' ')
 
-    const params: any[] = []
-    const whereParts: string[] = []
-    for (const w of this._wheres) { whereParts.push(w.sql); params.push(...w.params) }
-    for (const w of this._orWheres) { whereParts.push(`OR ${w.sql}`); params.push(...w.params) }
-    if (whereParts.length) sql += ' WHERE ' + whereParts.join(' AND ').replace(/ AND OR /g, ' OR ')
+    const { clause: whereClause, params } = this._buildWhereClause()
+    if (whereClause) sql += ` WHERE ${whereClause}`
 
     if (this._groupBys.length) sql += ' GROUP BY ' + this._groupBys.join(', ')
     if (this._havings.length) {
@@ -524,6 +521,17 @@ export class QueryBuilder {
     if (this._offset !== undefined) sql += ` OFFSET ${this._offset}`
 
     return { sql, params }
+  }
+
+  /** Build one consistent predicate for SELECT and every mutating operation. */
+  private _buildWhereClause(): { clause: string; params: any[] } {
+    const params: any[] = []
+    const andParts = this._wheres.map((w) => { params.push(...w.params); return w.sql })
+    const orParts = this._orWheres.map((w) => { params.push(...w.params); return w.sql })
+    const groups: string[] = []
+    if (andParts.length) groups.push(andParts.join(' AND '))
+    if (orParts.length) groups.push(orParts.join(' OR '))
+    return { clause: groups.length > 1 ? `(${groups[0]}) OR ${groups[1]}` : (groups[0] ?? ''), params }
   }
 
   async all<T = any>(): Promise<T[]> {
@@ -635,12 +643,12 @@ export class QueryBuilder {
 
   async update(values: Record<string, any>): Promise<number> {
     const sets = Object.keys(values).map(k => `${quoteIdentifier(k)} = ?`).join(', ')
-    const params = [...Object.values(values)]
+    if (!sets) throw new Error('update() requires at least one value')
+    const where = this._buildWhereClause()
+    const params = [...Object.values(values), ...where.params]
 
     let sql = `UPDATE "${this._table}" SET ${sets}`
-    const whereParts: string[] = []
-    for (const w of this._wheres) { whereParts.push(w.sql); params.push(...w.params) }
-    if (whereParts.length) sql += ' WHERE ' + whereParts.join(' AND ')
+    if (where.clause) sql += ` WHERE ${where.clause}`
 
     await this._db.run(sql, params)
     return 0 // SQLite doesn't return affected rows via run
@@ -648,11 +656,10 @@ export class QueryBuilder {
 
   async increment(column: string, amount = 1): Promise<void> {
     const quoted = quoteIdentifier(column)
-    const params: any[] = [amount]
+    const where = this._buildWhereClause()
+    const params: any[] = [amount, ...where.params]
     let sql = `UPDATE "${this._table}" SET ${quoted} = ${quoted} + ?`
-    const whereParts: string[] = []
-    for (const w of this._wheres) { whereParts.push(w.sql); params.push(...w.params) }
-    if (whereParts.length) sql += ' WHERE ' + whereParts.join(' AND ')
+    if (where.clause) sql += ` WHERE ${where.clause}`
     await this._db.run(sql, params)
   }
 
@@ -663,12 +670,10 @@ export class QueryBuilder {
   // ── Execute: DELETE ────────────────────────────────────
 
   async delete(): Promise<void> {
-    const params: any[] = []
+    const where = this._buildWhereClause()
     let sql = `DELETE FROM "${this._table}"`
-    const whereParts: string[] = []
-    for (const w of this._wheres) { whereParts.push(w.sql); params.push(...w.params) }
-    if (whereParts.length) sql += ' WHERE ' + whereParts.join(' AND ')
-    await this._db.run(sql, params)
+    if (where.clause) sql += ` WHERE ${where.clause}`
+    await this._db.run(sql, where.params)
   }
 
   // ── Debug ──────────────────────────────────────────────

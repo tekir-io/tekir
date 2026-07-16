@@ -31,7 +31,7 @@ export class AppleProvider implements SocialProvider {
    * @param codeChallenge - Optional PKCE S256 code challenge.
    * @returns The full Apple authorization URL.
    */
-  getAuthUrl(state: string, scopes?: string[], codeChallenge?: string): string {
+  getAuthUrl(state: string, scopes?: string[], codeChallenge?: string, nonce?: string): string {
     const params = new URLSearchParams({
       client_id: this.config.clientId,
       redirect_uri: this.config.redirectUri,
@@ -44,6 +44,7 @@ export class AppleProvider implements SocialProvider {
       params.set('code_challenge', codeChallenge)
       params.set('code_challenge_method', 'S256')
     }
+    if (nonce) params.set('nonce', nonce)
     return `${AUTH_URL}?${params}`
   }
 

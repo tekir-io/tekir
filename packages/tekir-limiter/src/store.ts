@@ -567,6 +567,7 @@ export class RedisStore implements LimiterStore {
 export class DatabaseStore implements LimiterStore {
   private db: any
   private table: string
+  private tableReady: Promise<void> | null = null
 
   /**
    * Create a new DatabaseStore.
@@ -579,18 +580,32 @@ export class DatabaseStore implements LimiterStore {
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) throw new Error(`Invalid table name: "${table}"`)
     this.db = db
     this.table = table
-    this._ensureTable()
+    // Initialization is lazy because constructors cannot await it. Every
+    // public operation awaits the same promise so callers never race creation.
   }
 
   private async _ensureTable() {
-    try {
-      await this.db.exec(`CREATE TABLE IF NOT EXISTS "${this.table}" (
-        key TEXT PRIMARY KEY,
-        count INTEGER DEFAULT 0,
-        reset_at INTEGER NOT NULL,
-        blocked_until INTEGER DEFAULT 0
-      )`)
-    } catch {}
+    if (!this.tableReady) {
+      this.tableReady = (async () => {
+        await this.db.exec(`CREATE TABLE IF NOT EXISTS "${this.table}" (
+          key TEXT PRIMARY KEY,
+          count INTEGER DEFAULT 0,
+          reset_at INTEGER NOT NULL,
+          blocked_until INTEGER DEFAULT 0,
+          max_hits INTEGER DEFAULT 0
+        )`)
+        // Upgrade tables created by older releases. Duplicate-column errors
+        // mean the schema is already current; every other failure is real and
+        // must surface instead of producing a half-working limiter.
+        try {
+          await this.db.exec(`ALTER TABLE "${this.table}" ADD COLUMN max_hits INTEGER DEFAULT 0`)
+        } catch (error: any) {
+          const message = String(error?.message ?? error)
+          if (!/duplicate column|already exists/i.test(message)) throw error
+        }
+      })()
+    }
+    return this.tableReady
   }
 
   /**
@@ -601,10 +616,11 @@ export class DatabaseStore implements LimiterStore {
    * @param windowMs - Window duration in milliseconds.
    * @returns The current rate-limit state after incrementing.
    */
-  async check(key: string, max: number, windowMs: number): Promise<LimiterResult> {
+  async check(key: string, max: number, windowMs: number, amount = 1): Promise<LimiterResult> {
     await this._ensureTable()
     const now = Date.now()
     const resetAt = now + windowMs
+    const incrementBy = Math.max(1, amount)
 
     // Single atomic upsert (read-modify-write in one statement) so concurrent
     // requests cannot read the same count and both write the same +1, which
@@ -612,13 +628,14 @@ export class DatabaseStore implements LimiterStore {
     // window, start a new window at count 1; otherwise increment in place.
     // `RETURNING` hands back the committed row so we report the true count.
     const row = await this.db.queryOne(
-      `INSERT INTO "${this.table}" (key, count, reset_at, blocked_until)
-         VALUES (?, 1, ?, 0)
+      `INSERT INTO "${this.table}" (key, count, reset_at, blocked_until, max_hits)
+         VALUES (?, ?, ?, 0, ?)
        ON CONFLICT(key) DO UPDATE SET
-         count = CASE WHEN ? >= "${this.table}".reset_at THEN 1 ELSE "${this.table}".count + 1 END,
-         reset_at = CASE WHEN ? >= "${this.table}".reset_at THEN ? ELSE "${this.table}".reset_at END
-       RETURNING count, reset_at, blocked_until`,
-      [key, resetAt, now, now, resetAt]
+         count = CASE WHEN ? >= "${this.table}".reset_at THEN ? ELSE "${this.table}".count + ? END,
+         reset_at = CASE WHEN ? >= "${this.table}".reset_at THEN ? ELSE "${this.table}".reset_at END,
+         max_hits = ?
+       RETURNING count, reset_at, blocked_until, max_hits`,
+      [key, incrementBy, resetAt, max, now, incrementBy, incrementBy, now, resetAt, max]
     )
 
     // Block takes precedence. The upsert already ran, but a blocked key
@@ -644,11 +661,11 @@ export class DatabaseStore implements LimiterStore {
    * @param key - The rate-limit key.
    * @param max - Maximum allowed hits within the window.
    * @param windowMs - Window duration in milliseconds.
-   * @param _amount - Ignored; included for interface compatibility.
+   * @param amount - Number of slots to consume.
    * @returns The current rate-limit state after incrementing.
    */
-  async increment(key: string, max: number, windowMs: number, _amount = 1): Promise<LimiterResult> {
-    return this.check(key, max, windowMs) // simplified — check already increments
+  async increment(key: string, max: number, windowMs: number, amount = 1): Promise<LimiterResult> {
+    return this.check(key, max, windowMs, amount)
   }
 
   /**
@@ -658,14 +675,15 @@ export class DatabaseStore implements LimiterStore {
    * @param key - The rate-limit key.
    * @param max - Maximum allowed hits within the window.
    * @param windowMs - Window duration in milliseconds.
-   * @param _amount - Ignored; the upsert increments by one.
+   * @param amount - Number of slots to consume.
    * @param blockMs - Lockout (ms) to apply if the limit is exceeded. `0` disables it.
    * @returns The current rate-limit state after the operation.
    */
-  async consume(key: string, max: number, windowMs: number, _amount = 1, blockMs = 0): Promise<LimiterResult> {
-    const result = await this.check(key, max, windowMs)
+  async consume(key: string, max: number, windowMs: number, amount = 1, blockMs = 0): Promise<LimiterResult> {
+    const result = await this.check(key, max, windowMs, amount)
     if (!result.allowed && blockMs > 0) {
       await this.block(key, blockMs)
+      return { ...result, resetTime: Math.ceil(blockMs / 1000) }
     }
     return result
   }
@@ -716,13 +734,19 @@ export class DatabaseStore implements LimiterStore {
    */
   async get(key: string): Promise<LimiterResult | null> {
     await this._ensureTable()
-    const row = await this.db.queryOne(`SELECT count, reset_at, blocked_until FROM "${this.table}" WHERE key = ?`, [key])
+    const row = await this.db.queryOne(`SELECT count, reset_at, blocked_until, max_hits FROM "${this.table}" WHERE key = ?`, [key])
     if (!row) return null
     const now = Date.now()
     if (row.blocked_until && now < row.blocked_until) {
-      return { allowed: false, limit: 0, remaining: 0, resetTime: Math.ceil((row.blocked_until - now) / 1000) }
+      return { allowed: false, limit: row.max_hits, remaining: 0, resetTime: Math.ceil((row.blocked_until - now) / 1000) }
     }
-    return { allowed: true, limit: 0, remaining: 0, resetTime: Math.ceil((row.reset_at - now) / 1000) }
+    const limit = row.max_hits || 0
+    return {
+      allowed: limit === 0 || row.count <= limit,
+      limit,
+      remaining: Math.max(0, limit - row.count),
+      resetTime: Math.max(0, Math.ceil((row.reset_at - now) / 1000)),
+    }
   }
 
   /**
@@ -731,6 +755,7 @@ export class DatabaseStore implements LimiterStore {
    * @param key - The rate-limit key to remove.
    */
   async reset(key: string): Promise<void> {
+    await this._ensureTable()
     await this.db.run(`DELETE FROM "${this.table}" WHERE key = ?`, [key])
   }
 

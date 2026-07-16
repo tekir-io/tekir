@@ -85,7 +85,7 @@ export class GoogleProvider implements SocialProvider {
     const data = await res.json() as any
     return {
       id: data.sub,
-      email: data.email || null,
+      email: data.email_verified === true ? (data.email || null) : null,
       name: data.name || null,
       firstName: data.given_name || null,
       lastName: data.family_name || null,

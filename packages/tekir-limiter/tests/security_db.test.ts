@@ -49,4 +49,15 @@ describe('DatabaseStore atomic check', () => {
     expect(fresh.allowed).toBe(true)
     expect(fresh.remaining).toBe(1)
   })
+
+  test('weighted consume uses the requested amount', async () => {
+    const first = await store.consume('weighted', 5, 60_000, 3)
+    expect(first.allowed).toBe(true)
+    expect(first.remaining).toBe(2)
+
+    const second = await store.consume('weighted', 5, 60_000, 3)
+    expect(second.allowed).toBe(false)
+    expect(second.remaining).toBe(0)
+    expect((await store.get('weighted'))?.allowed).toBe(false)
+  })
 })

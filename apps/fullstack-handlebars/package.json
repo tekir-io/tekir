@@ -7,13 +7,13 @@
     "tekir": "bun run index.ts"
   },
   "dependencies": {
-    "@tekir/core": "^0.1.34",
-    "@tekir/config": "^0.1.2",
-    "@tekir/db": "^0.1.4",
-    "@tekir/env": "^0.1.1",
-    "@tekir/hash": "^0.1.1",
-    "@tekir/logger": "^0.1.2",
-    "@tekir/session": "^0.1.4",
+    "@tekir/core": "^0.1.35",
+    "@tekir/config": "^0.1.3",
+    "@tekir/db": "^0.1.5",
+    "@tekir/env": "^0.1.2",
+    "@tekir/hash": "^0.1.2",
+    "@tekir/logger": "^0.1.3",
+    "@tekir/session": "^0.1.5",
     "@tekir/view": "^0.1.1",
     "handlebars": "^4.7.8"
   }

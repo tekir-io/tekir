@@ -19,7 +19,9 @@ export class DatabaseSessionStore implements SessionStore {
     try {
       await this.db.exec(`CREATE TABLE IF NOT EXISTS "${this.table}" (id TEXT PRIMARY KEY, data TEXT, expires_at INTEGER)`)
       this._ready = true
-    } catch {}
+    } catch (error) {
+      throw new Error(`[@tekir/session] Failed to initialize session table "${this.table}"`, { cause: error })
+    }
   }
 
   async read(id: string): Promise<Record<string, unknown> | null> {
@@ -36,10 +38,12 @@ export class DatabaseSessionStore implements SessionStore {
   }
 
   async destroy(id: string): Promise<void> {
+    await this._ensureTable()
     await this.db.run(`DELETE FROM "${this.table}" WHERE id = ?`, [id])
   }
 
   async touch(id: string, ttlSeconds: number): Promise<void> {
+    await this._ensureTable()
     await this.db.run(`UPDATE "${this.table}" SET expires_at = ? WHERE id = ?`, [Date.now() + ttlSeconds * 1000, id])
   }
 }

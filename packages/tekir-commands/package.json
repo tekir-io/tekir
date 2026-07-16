@@ -1,6 +1,6 @@
 {
   "name": "@tekir/commands",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "CLI command parsing and kernel for terminals",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/runtime": "^0.1.4"
+    "@tekir/runtime": "^0.1.5"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

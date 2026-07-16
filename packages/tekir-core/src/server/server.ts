@@ -13,7 +13,8 @@
 import { Router } from '../router/router'
 import { ExceptionHandler } from '../exceptions/exception_handler'
 import { WsManager } from '../ws/index'
-import { createResponse, setTrustedHosts } from '../http/response'
+import { createResponse, finalizeResponse } from '../http/response'
+import { createRequest, getRequestCookies } from '../http/request'
 import type { MiddlewareFunction, ServerOptions, RouteHandler, LifecycleHook } from '../http/types'
 
 const EMPTY = Object.freeze(Object.create(null))
@@ -231,24 +232,6 @@ function generatorToStream(gen: Generator | AsyncGenerator): Promise<Response> {
   })
 }
 
-// Whether to expose internal error messages/stacks in 500 responses. Flipped
-// on by `TekirServer.configure({ development: true })`. Defaults to false so a
-// misconfigured prod app does not leak internal error text.
-let _debugErrors = false
-
-function handleErrorFn(error: any): Response {
-  // Handle HttpException and any error with statusCode + toJSON (like ValidationError from @tekir/validator)
-  if (error && error.statusCode && typeof error.toJSON === 'function') {
-    return new Response(JSON.stringify(error.toJSON()), { status: error.statusCode, headers: JSON_HEADERS })
-  }
-  // Only surface the raw message in debug mode; production gets a generic
-  // string so internal details (and stack-bearing messages) never leak.
-  const message = _debugErrors ? (error?.message ?? 'Internal Server Error') : 'Internal Server Error'
-  const body: any = { error: { message, statusCode: 500 } }
-  if (_debugErrors && error?.stack) body.error.stack = error.stack
-  return new Response(JSON.stringify(body), { status: 500, headers: JSON_HEADERS })
-}
-
 /**
  * Apply `ctx.$responseHeaders` onto an outgoing response. Skips the work
  * (and avoids the Headers + Response allocation) when nothing was written
@@ -298,7 +281,11 @@ function compileHandler(
   handler: RouteHandler,
   middlewares: MiddlewareFunction[],
   pattern: string,
-  globalMw: MiddlewareFunction[]
+  globalMw: MiddlewareFunction[],
+  routeMethod: string,
+  routeName: string | undefined,
+  responseFactory: (request: Request) => ReturnType<typeof createResponse>,
+  handleError: (error: Error, ctx: any) => Promise<Response>
 ): (req: Request) => Response | Promise<Response> {
   const allMw = [...globalMw, ...middlewares]
   const hasMw = allMw.length > 0
@@ -310,35 +297,40 @@ function compileHandler(
   const allStr = hasMw ? fnStr + '\n' + allMw.map(m => m.toString()).join('\n') : fnStr
 
   const isBound = !hasOrigSource && fnStr.includes('[native code]')
-  const isPassThrough = isBound || /\binstance\b/.test(fnStr)
+  const arrowParam = /^\s*(?:async\s+)?(?:\(\s*([A-Za-z_$][\w$]*)\s*\)|([A-Za-z_$][\w$]*))\s*=>/.exec(fnStr)
+  const functionParam = /^\s*(?:async\s+)?function(?:\s+[\w$]+)?\s*\(\s*([A-Za-z_$][\w$]*)/.exec(fnStr)
+  const methodParam = /^\s*(?:async\s+)?[A-Za-z_$][\w$]*\s*\(\s*([A-Za-z_$][\w$]*)/.exec(fnStr)
+  const usesWholeContext = !!(arrowParam?.[1] || arrowParam?.[2] || functionParam?.[1] || methodParam?.[1])
+  const isPassThrough = isBound || usesWholeContext || /\binstance\b/.test(fnStr)
 
-  // Two response.* features need a real, per-request response object instead
-  // of the frozen static helper: `redirect.back` (reads Referer) and
-  // `response.status(...)` (carries a status across chained calls). Detect
-  // either, swap to `createResponse(request)` only on routes that need it.
+  // Any use of the response context needs a real per-request builder. Header,
+  // cookie, attachment, signed/encrypted cookie and status state cannot live
+  // on the frozen static helper. Detect the response object itself rather than
+  // a list of method names: response calls may be delegated to helper
+  // functions and new stateful methods must remain correct automatically.
   const usesRedirectBack = /\bredirect\s*\.\s*back\b/.test(allStr)
-  const usesResponseStatus = /\bresponse\s*\.\s*status\s*\(/.test(allStr)
-  const needsStatefulResponse = usesRedirectBack || usesResponseStatus
-
-  // Convenience URL props on `ctx.request`. Only parse the URL when one of
-  // these is actually referenced (or the handler is a bound method whose
-  // body we cannot introspect). The parse is cheap but skippable on
-  // hot-path routes that only touch `request.url` / `request.method`.
-  const usesUrlProps = isPassThrough
-    || /\brequest\s*\.\s*(path|host|hostname|protocol|origin|completeUrl)\b/.test(allStr)
+  const usesResponseObject = isPassThrough || hasMw || /\bresponse\b/.test(allStr)
+  const needsStatefulResponse = usesRedirectBack || usesResponseObject
 
   const inference = isPassThrough || hasMw ? {
     query: true, body: true, headers: true, params: true, request: true, response: true,
   } : {
     query: /\bquery\b/.test(allStr) || /\binput\b/.test(allStr),
-    body: /\bbody\b/.test(allStr) || /\binput\b/.test(allStr) || /\bbodyError\b/.test(allStr),
+    body: /\bbody\b/.test(allStr)
+      || /\binput\b/.test(allStr)
+      || /\bbodyError\b/.test(allStr)
+      || /\brequest\s*\.\s*(all|only|except|hasBody)\b/.test(allStr)
+      || /[,(]\s*request\s*[,)]/.test(allStr),
     headers: /\bheaders\b/.test(allStr),
     params: /\bparams\b/.test(allStr) || isDynamic,
     request: /\brequest\b/.test(allStr),
     response: /\bresponse\b/.test(allStr) || needsStatefulResponse,
   }
 
-  const isAsync = /\basync\b/.test(fnStr) || /\bawait\b/.test(fnStr) || inference.body || hasMw
+  const parsesBody = inference.body && !['GET', 'HEAD', 'OPTIONS'].includes(routeMethod)
+  const lazyContextFields = isPassThrough || hasMw
+  const eagerQuery = inference.query && !lazyContextFields
+  const isAsync = /\basync\b/.test(fnStr) || /\bawait\b/.test(fnStr) || parsesBody || hasMw
 
   // NOTE: A former "inline" path re-parsed the handler's `.toString()` source
   // with regexes and re-emitted its body into a `new Function(...)`, and
@@ -351,83 +343,91 @@ function compileHandler(
   // always matches the authored source.
 
   // COMPILED PATH: build function string with context object
-  let fn = 'const rh=d.rh,E=d.E,pq=d.pq,JI=d.JI,handler=d.handler'
-  if (needsStatefulResponse) fn += ',cr=d.cr'
-  if (hasMw) fn += ',mw=d.mw,he=d.he,mh=d.mh'
+  let fn = 'const rh=d.rh,E=d.E,pq=d.pq,JI=d.JI,handler=d.handler,cr=d.cr,creq=d.creq,eh=d.eh'
+  if (hasMw) fn += ',mw=d.mw,mh=d.mh'
   fn += '\n'
   fn += isAsync ? 'return async function(request){\n' : 'return function(request){\n'
 
-  if (inference.query) {
+  if (eagerQuery) {
     fn += 'const u=request.url,s=u.indexOf("/",11),qi=u.indexOf("?",s+1)\n'
     fn += 'const query=qi===-1?E:pq(u.substring(qi+1))\n'
   }
-  if (inference.body) {
-    // Body-parser dispatch adapted from Elysia (`elysia/src/compose.ts`).
-    // 12th character of `application/<sub>` distinguishes the subtype:
-    //   106 ('j') = json, 120 ('x') = x-www-form-urlencoded,
-    //   109 ('m') = multipart.
+  if (inference.body && !parsesBody) {
+    fn += 'let body,bodyError,_files=[]\n'
+  }
+  if (parsesBody) {
+    // Parse the normalized media type. Structured JSON suffixes such as
+    // application/problem+json are JSON by RFC convention, and media types
+    // are case-insensitive.
     // Parse failures (empty body w/ JSON content-type, malformed payloads,
     // etc.) are caught and exposed via `ctx.bodyError` so middleware and
     // handlers can respond with a real 400 instead of letting the route
     // crash with a generic 500.
-    fn += 'let body,bodyError\nif(request.method!=="GET"&&request.method!=="HEAD"){\n'
-    fn += 'const ct=request.headers.get("content-type")\n'
-    fn += 'if(ct){try{switch(ct.length>12?ct.charCodeAt(12):ct.charCodeAt(0)){\n'
-    fn += 'case 106:body=await request.json();break\n'
-    fn += 'case 120:{const t=await request.text();body=Object.create(null);for(const[k,v]of new URLSearchParams(t))body[k]=v;break}\n'
-    fn += 'case 109:{const fd=await request.formData();body=Object.create(null);const _files=[];for(const[k,v]of fd){if(v instanceof File){_files.push({field:k,file:v})}else{if(body[k]!==undefined){if(Array.isArray(body[k]))body[k].push(v);else body[k]=[body[k],v]}else body[k]=v}};break}\n'
-    fn += '}}catch(_be){bodyError=_be}}}\n'
+    fn += 'let body,bodyError,_files=[]\nif(request.method!=="GET"&&request.method!=="HEAD"){\n'
+    fn += 'const _cth=request.headers.get("content-type"),ct=_cth?_cth.split(";",1)[0].trim().toLowerCase():""\n'
+    fn += 'if(ct){try{\n'
+    fn += 'if(ct==="application/json"||ct.endsWith("+json"))body=await request.json()\n'
+    fn += 'else if(ct==="application/x-www-form-urlencoded"){const t=await request.text();body=Object.create(null);for(const[k,v]of new URLSearchParams(t))body[k]=v}\n'
+    fn += 'else if(ct==="multipart/form-data"){const fd=await request.formData();body=Object.create(null);for(const[k,v]of fd){if(typeof File!=="undefined"&&v instanceof File){_files.push({field:k,file:v})}else{if(body[k]!==undefined){if(Array.isArray(body[k]))body[k].push(v);else body[k]=[body[k],v]}else body[k]=v}}}\n'
+    fn += '}catch(_be){bodyError=_be}}}\n'
     // Method spoofing: _method in body or query overrides HTTP method
     fn += 'if(body&&body._method){request._spoofedMethod=body._method.toUpperCase();delete body._method}\n'
   }
 
-  // Per-request stateful response when `redirect.back` or `response.status()`
-  // is used. The frozen `rh` singleton can't track Referer or carry a status
-  // across chained calls, so we delegate to `createResponse(request)` for
-  // these routes only.
+  // Per-request response state for every route that consumes `ctx.response`.
   if (needsStatefulResponse) {
-    fn += 'const _resp=cr(request)\n'
+    // Lazy allocation keeps middleware-heavy routes that never touch the
+    // response builder off the allocation path while preserving correctness
+    // for delegated/dynamic context access.
+    fn += 'let _resp\nconst _getResp=()=>_resp||(_resp=cr(request))\n'
   }
-  if (usesUrlProps && inference.request) {
-    // Single URL parse upfront; downstream props read off `_u` so accessing
-    // `request.path` ten times in a handler does not re-parse.
-    fn += 'const _u=new URL(request.url)\n'
+  if (inference.request) {
+    fn += 'let _req\nconst _getReq=()=>_req||(_req=creq(request,request.params||E,' + (inference.body ? 'body' : 'undefined') + ',' + JSON.stringify(routeName) + ',' + (eagerQuery ? 'query' : 'undefined') + '))\n'
   }
   fn += 'const c={'
   if (inference.request) {
-    const urlProps = usesUrlProps
-      ? ',path:_u.pathname,host:_u.host,hostname:_u.hostname,protocol:_u.protocol,origin:_u.origin,completeUrl:_u.href'
-      : ''
-    fn += 'request:{raw:request,url:request.url' + urlProps + ',method:request._spoofedMethod||request.method,header:(n,d)=>request.headers.get(n)??d,qs:()=>' + (inference.query ? 'query' : 'E') + ',param:(k,d)=>(request.params||E)[k]??d,input:(k,d)=>{if(' + (inference.body ? 'body&&k in body' : 'false') + ')return body[k];if(' + (inference.query ? 'query&&k in query' : 'false') + ')return query[k];if((request.params||E)[k]!==undefined)return(request.params||E)[k];return d},cookie:(n)=>request.cookies?.get(n),cookies:()=>request.cookies},'
+    fn += 'get request(){return _getReq()},'
   }
-  if (inference.response) fn += (needsStatefulResponse ? 'response:_resp,' : 'response:rh,')
+  if (inference.response) fn += (needsStatefulResponse ? 'get response(){return _getResp()},' : 'response:rh,')
   fn += 'params:' + (inference.params ? 'request.params||E' : 'E')
-  if (inference.query) fn += ',query'
+  if (inference.query) fn += lazyContextFields ? ',get query(){return _getReq().qs()}' : ',query'
   if (inference.body) fn += ',body,bodyError'
-  if (inference.headers) fn += ',headers:Object.fromEntries(request.headers.entries())'
-  if (hasMw || /\bcookies?\b/.test(allStr)) fn += ',cookies:request.cookies'
-  if (hasMw || /\broute\b/.test(allStr)) fn += ',route:{pattern:' + JSON.stringify(pattern) + '}'
+  if (inference.headers) fn += lazyContextFields ? ',get headers(){return _getReq().headers()}' : ',headers:Object.fromEntries(request.headers.entries())'
+  if (hasMw || /\bcookies?\b/.test(allStr)) fn += lazyContextFields ? ',get cookies(){return d.gcs(request)}' : ',cookies:d.gcs(request)'
+  if (isPassThrough || hasMw || /\bsubdomains\b/.test(allStr)) fn += ',subdomains:request.subdomains||E'
+  if (hasMw || /\broute\b/.test(allStr)) fn += ',route:{pattern:' + JSON.stringify(pattern) + ',name:' + JSON.stringify(routeName) + '}'
   if (hasMw || /\bstore\b/.test(allStr)) fn += ',store:{}'
-  if (inference.body) fn += ',_rawFiles:typeof _files!=="undefined"?_files:[]'
+  if (inference.body) fn += ',_rawFiles:_files'
   fn += '}\n'
 
   // Add redirect and status utilities only when used
   if (hasMw || /\bredirect\b/.test(allStr)) fn += 'c.redirect=(u,s)=>new Response(null,{status:s||302,headers:{Location:u}})\n'
   if (hasMw || /\bstatus\b/.test(allStr)) fn += 'c.status=(code,body)=>body!=null?new Response(typeof body==="object"?JSON.stringify(body):String(body),{status:code,headers:typeof body==="object"?{"Content-Type":"application/json"}:{}}):new Response(null,{status:code})\n'
 
+  const finish = (expression: string) => needsStatefulResponse
+    ? `(_resp?d.fr(_resp,${expression}):${expression})`
+    : expression
+  const prepareErrorContext =
+    (inference.request ? '' : 'c.request=creq(request,request.params||E,undefined,' + JSON.stringify(routeName) + ')\n') +
+    (inference.response ? '' : 'c.response=cr(request)\n')
+
   if (!hasMw) {
+    fn += 'try{\n'
     fn += (isAsync ? 'let r=await handler(c)\n' : 'let r=handler(c)\n')
-    if (!isAsync) fn += 'if(r&&typeof r.then==="function")return r.then(r2=>r2 instanceof Response?r2:r2&&typeof r2.next==="function"&&(typeof r2[Symbol.asyncIterator]==="function"||typeof r2[Symbol.iterator]==="function")?d.toStream(r2):typeof r2==="object"&&r2!==null?new Response(JSON.stringify(r2),JI):r2==null?new Response(null,{status:204}):new Response(String(r2)))\n'
-    fn += 'if(r instanceof Response)return r\n'
+    if (!isAsync) {
+      fn += 'if(r&&typeof r.then==="function")return r.then(async r2=>{if(r2 instanceof Response)return ' + finish('r2') + ';if(r2&&typeof r2.next==="function"&&(typeof r2[Symbol.asyncIterator]==="function"||typeof r2[Symbol.iterator]==="function"))return ' + finish('await d.toStream(r2)') + ';const _o=typeof r2==="object"&&r2!==null?new Response(JSON.stringify(r2),JI):r2==null?new Response(null,{status:204}):new Response(String(r2));return ' + finish('_o') + '}).catch(async e=>{' + prepareErrorContext + 'return eh(e,c)})\n'
+    }
+    fn += 'if(r instanceof Response)return ' + finish('r') + '\n'
     // Generator detection must precede the plain-object branch: a generator
     // is `typeof === "object"`, so without this it would be JSON-stringified
     // to `{}`. Covers both `function*` (Symbol.iterator) and `async
     // function*` (Symbol.asyncIterator); `typeof r.next` short-circuits for
     // every non-iterator object so the hot path pays one property read.
-    fn += 'if(r&&typeof r.next==="function"&&(typeof r[Symbol.asyncIterator]==="function"||typeof r[Symbol.iterator]==="function"))return d.toStream(r)\n'
-    fn += 'if(r==null)return new Response(null,{status:204})\n'
-    fn += 'if(typeof r==="object")return new Response(JSON.stringify(r),JI)\n'
-    fn += 'return new Response(String(r))\n'
+    fn += 'if(r&&typeof r.next==="function"&&(typeof r[Symbol.asyncIterator]==="function"||typeof r[Symbol.iterator]==="function"))return d.toStream(r).then(_o=>' + finish('_o') + ')\n'
+    fn += 'if(r==null){const _o=new Response(null,{status:204});return ' + finish('_o') + '}\n'
+    fn += 'if(typeof r==="object"){const _o=new Response(JSON.stringify(r),JI);return ' + finish('_o') + '}\n'
+    fn += '{const _o=new Response(String(r));return ' + finish('_o') + '}\n'
+    fn += '}catch(e){' + prepareErrorContext + 'return eh(e,c)}\n'
   } else {
     // Capture middleware return value: if a middleware returns a Response
     // (or anything truthy) and didn't already set `c.$result`, treat the
@@ -438,20 +438,22 @@ function compileHandler(
     // to `ctx.$responseHeaders` (CORS, request id, server timing, etc.)
     // lands on the outgoing response, including framework-handled errors.
     fn += 'let mi=0\nconst nx=async()=>{if(mi<mw.length){const _mr=await mw[mi++](c,nx);if(_mr!==undefined&&c.$result===undefined)c.$result=_mr}else{c.$result=await handler(c)}}\n'
-    fn += 'try{await nx()}catch(e){return mh(he(e),c)}\n'
+    fn += 'try{await nx()}catch(e){return mh(' + finish('await eh(e,c)') + ',c)}\n'
     fn += 'const result=c.$result\n'
-    fn += 'if(result&&typeof result.next==="function"&&(typeof result[Symbol.asyncIterator]==="function"||typeof result[Symbol.iterator]==="function"))return mh(await d.toStream(result),c)\n'
-    fn += 'if(result instanceof Response)return mh(result,c)\n'
-    fn += 'if(result!=null)return mh(typeof result==="object"?new Response(JSON.stringify(result),JI):new Response(String(result)),c)\n'
-    fn += 'return mh(new Response(null,{status:204}),c)\n'
+    fn += 'if(result&&typeof result.next==="function"&&(typeof result[Symbol.asyncIterator]==="function"||typeof result[Symbol.iterator]==="function"))return mh(' + finish('await d.toStream(result)') + ',c)\n'
+    fn += 'if(result instanceof Response)return mh(' + finish('result') + ',c)\n'
+    fn += 'if(result!=null){const _o=typeof result==="object"?new Response(JSON.stringify(result),JI):new Response(String(result));return mh(' + finish('_o') + ',c)}\n'
+    fn += '{const _o=new Response(null,{status:204});return mh(' + finish('_o') + ',c)}\n'
   }
 
   fn += '}\n'
   return Function('d', fn)({
-    handler, rh: responseHelpers, cr: createResponse, E: EMPTY, pq: fastParseQuery, JI: JSON_RESPONSE_INIT,
-    mw: hasMw ? allMw : undefined, he: hasMw ? handleErrorFn : undefined,
+    handler, rh: responseHelpers, cr: responseFactory, creq: createRequest,
+    E: EMPTY, pq: fastParseQuery, JI: JSON_RESPONSE_INIT,
+    mw: hasMw ? allMw : undefined, eh: handleError,
     mh: hasMw ? mergeResponseHeaders : undefined,
     toStream: generatorToStream,
+    gcs: getRequestCookies, fr: finalizeResponse,
   })
 }
 
@@ -463,8 +465,33 @@ interface RouterHooks {
   onError: ((error: Error, ctx: any) => any)[]
 }
 
-function collectRoutes(trie: any, globalMw: MiddlewareFunction[], hooks: RouterHooks): Record<string, any> {
+function collectRoutes(
+  trie: any,
+  globalMw: MiddlewareFunction[],
+  hooks: RouterHooks,
+  exceptionHandler: ExceptionHandler,
+  responseFactory: (request: Request) => ReturnType<typeof createResponse>,
+): Record<string, any> {
   const routes: Record<string, any> = {}
+
+  const handleRouteError = async (error: Error, ctx: any): Promise<Response> => {
+    for (const hook of hooks.onError) {
+      try {
+        const result = await hook(error, ctx)
+        if (result !== undefined && result !== null) {
+          const outgoing = result instanceof Response
+            ? result
+            : new Response(typeof result === 'object' ? JSON.stringify(result) : String(result), {
+              status: (error as any)?.statusCode || 500,
+              headers: typeof result === 'object' ? JSON_HEADERS : undefined,
+            })
+          return ctx?.response ? finalizeResponse(ctx.response, outgoing) : outgoing
+        }
+      } catch {}
+    }
+    const outgoing = await exceptionHandler.handle(error, ctx)
+    return ctx?.response ? finalizeResponse(ctx.response, outgoing) : outgoing
+  }
 
   // Build hook middleware wrappers
   const hookMiddlewares: MiddlewareFunction[] = []
@@ -514,7 +541,16 @@ function collectRoutes(trie: any, globalMw: MiddlewareFunction[], hooks: RouterH
         }
       }
 
-      const wrapped = compileHandler(handler, allMw, pattern, globalMw)
+      const wrapped = compileHandler(
+        handler,
+        allMw,
+        pattern,
+        globalMw,
+        method,
+        route.name,
+        responseFactory,
+        handleRouteError,
+      )
       const domain = route.domain
       if (domain) {
         // Domain-specific routes go into a separate map
@@ -551,12 +587,12 @@ function collectRoutes(trie: any, globalMw: MiddlewareFunction[], hooks: RouterH
     if (typeof value === 'function') continue // ANY-route: handles every method already
     if (value?.__domain) {
       if (value.handlers && !value.handlers.OPTIONS && !value.handlers.ANY) {
-        value.handlers.OPTIONS = compileHandler(noOpOptions, [...hookMiddlewares], value.__pattern || pattern, globalMw)
+        value.handlers.OPTIONS = compileHandler(noOpOptions, [...hookMiddlewares], value.__pattern || pattern, globalMw, 'OPTIONS', undefined, responseFactory, handleRouteError)
       }
       continue
     }
     if (!value.OPTIONS) {
-      value.OPTIONS = compileHandler(noOpOptions, [...hookMiddlewares], pattern, globalMw)
+      value.OPTIONS = compileHandler(noOpOptions, [...hookMiddlewares], pattern, globalMw, 'OPTIONS', undefined, responseFactory, handleRouteError)
     }
   }
 
@@ -570,7 +606,7 @@ function collectRoutes(trie: any, globalMw: MiddlewareFunction[], hooks: RouterH
   const noOpNotFound: RouteHandler = function noOpNotFound() {
     return new Response('{"error":"Not Found"}', { status: 404, headers: { 'Content-Type': 'application/json' } })
   }
-  ;(routes as any).__fallback = compileHandler(noOpNotFound, [...hookMiddlewares], '*', globalMw)
+  ;(routes as any).__fallback = compileHandler(noOpNotFound, [...hookMiddlewares], '*', globalMw, 'ANY', undefined, responseFactory, handleRouteError)
 
   return routes
 }
@@ -594,6 +630,7 @@ export class TekirServer {
   private _routeCount = 0
   private _fallback: ((req: Request) => Response | Promise<Response>) | null = null
   private _buildHooks: (() => Promise<void>)[] = []
+  private _stopHooks: (() => void | Promise<void>)[] = []
   private _staticRoutes: Record<string, any> = {}
 
   constructor() {
@@ -663,6 +700,12 @@ export class TekirServer {
     return this
   }
 
+  /** Register cleanup owned by server integrations (Vite, Next, etc.). */
+  onStop(fn: () => void | Promise<void>): this {
+    this._stopHooks.push(fn)
+    return this
+  }
+
   async build(): Promise<void> {
     for (const fn of this._buildHooks) await fn()
   }
@@ -681,23 +724,22 @@ export class TekirServer {
 
   buildRoutes(): Record<string, any> {
     this.router.compile()
-    return collectRoutes(this.router.getTrie(), this.router.globalMiddlewares, this.router.hooks)
+    const responseFactory = (request: Request) => createResponse(request, {
+      trustedHosts: this.options.trustedHosts,
+    })
+    return collectRoutes(
+      this.router.getTrie(),
+      this.router.globalMiddlewares,
+      this.router.hooks,
+      this.exceptionHandler,
+      responseFactory,
+    )
   }
 
   configure(options: ServerOptions): this {
     this.options = { ...this.options, ...options }
     if (options.development !== undefined) {
       this.exceptionHandler.debug = options.development
-      // Keep the compiled-path error renderer in sync so middleware routes do
-      // not leak internal error text in production.
-      _debugErrors = options.development
-    }
-    if (options.trustedHosts !== undefined) {
-      // Make same-origin checks (e.g. redirect.back) compare against the
-      // configured hosts instead of the spoofable Host header. The compiled
-      // path builds responses via `createResponse(request)`, which reads this
-      // module-level set.
-      setTrustedHosts(options.trustedHosts)
     }
     return this
   }
@@ -793,7 +835,7 @@ export class TekirServer {
     return [...allowed]
   }
 
-  start(): void {
+  async start(): Promise<void> {
     const routes = this.buildRoutes()
     this._compiledRoutes = routes
     const port = this.options.port ?? 3000
@@ -847,9 +889,9 @@ export class TekirServer {
       // handler can surface as an unhandled rejection and, on some runtimes,
       // take the process down. Renders through the framework's exception
       // handler so debug-mode stack exposure stays consistent.
-      error: (err: any) => {
+      error: async (err: any) => {
         try {
-          return handleErrorFn(err)
+          return await this.exceptionHandler.handle(err, {} as any)
         } catch {
           return new Response('{"error":"Internal Server Error"}', { status: 500, headers: { 'Content-Type': 'application/json' } })
         }
@@ -902,18 +944,18 @@ export class TekirServer {
       this.server = Bun.serve(serveConfig)
       if ((globalThis as any).Bun?.gc) (globalThis as any).Bun.gc(true)
     } else {
-      import('@tekir/runtime').then(({ serve }) => {
-        this.server = serve({
-          port,
-          hostname,
-          maxRequestBodySize: serveConfig.maxRequestBodySize,
-          idleTimeout: (this.options.idleTimeout ?? 120) * 1000,
-          error: serveConfig.error,
-          fetch: async (req: Request) => {
-            return this.handle(req)
-          },
-        })
+      const { serve } = await import('@tekir/runtime')
+      this.server = serve({
+        port,
+        hostname,
+        maxRequestBodySize: serveConfig.maxRequestBodySize,
+        idleTimeout: (this.options.idleTimeout ?? 120) * 1000,
+        error: serveConfig.error,
+        fetch: async (req: Request) => {
+          return this.handle(req)
+        },
       })
+      await this.server.ready
     }
   }
 
@@ -945,8 +987,10 @@ export class TekirServer {
    * are allowed to drain before the socket closes, matching Bun's
    * `server.stop(true)` semantics. Pass `false` for an immediate close.
    */
-  stop(graceful = true): void {
+  async stop(graceful = true): Promise<void> {
     if (this.server) { this.server.stop?.(graceful) }
+    const hooks = this._stopHooks.splice(0)
+    for (const hook of hooks.reverse()) await hook()
   }
 
   getServer() { return this.server }

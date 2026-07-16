@@ -4,10 +4,8 @@ import type { QueueBackend, JobRecord } from '../types'
 
 /** Minimal interface matching @tekir/redis's Redis class. */
 interface TekirRedis {
-  get(key: string): Promise<string | null>
-  set(key: string, value: string | number): Promise<void>
-  del(...keys: string[]): Promise<void>
   send(command: string, args?: string[]): Promise<any>
+  keyName?(key: string): string
   /**
    * Optional server-side script evaluation. Provided by clients that expose a
    * raw command path; when absent we fall back to `send('EVAL', ...)`.
@@ -39,7 +37,10 @@ local id = redis.call('RPOPLPUSH', KEYS[1], KEYS[2])
 if not id then return false end
 local rk = ARGV[1] .. id
 local raw = redis.call('GET', rk)
-if not raw then return false end
+if not raw then
+  redis.call('LREM', KEYS[2], 1, id)
+  return false
+end
 local rec = cjson.decode(raw)
 rec['status'] = 'processing'
 rec['claimToken'] = ARGV[2]
@@ -47,6 +48,36 @@ rec['reservedAt'] = tonumber(ARGV[3])
 local out = cjson.encode(rec)
 redis.call('SET', rk, out)
 return out
+`
+
+/** Atomically release a processing job to pending or delayed. */
+const REQUEUE_SCRIPT = `
+redis.call('SET', KEYS[1], ARGV[1])
+redis.call('LREM', KEYS[2], 0, ARGV[2])
+if tonumber(ARGV[3]) <= tonumber(ARGV[4]) then
+  redis.call('LPUSH', KEYS[3], ARGV[2])
+else
+  redis.call('ZADD', KEYS[4], ARGV[3], ARGV[2])
+end
+return 1
+`
+
+/** Atomically promote one due delayed job into its owning queue. */
+const PROMOTE_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+  redis.call('ZREM', KEYS[2], ARGV[1])
+  return 0
+end
+local rec = cjson.decode(raw)
+if rec['queue'] ~= ARGV[2] then return 0 end
+local score = redis.call('ZSCORE', KEYS[2], ARGV[1])
+if not score or tonumber(score) > tonumber(ARGV[3]) then return 0 end
+if redis.call('ZREM', KEYS[2], ARGV[1]) == 1 then
+  redis.call('LPUSH', KEYS[3], ARGV[1])
+  return 1
+end
+return 0
 `
 
 /**
@@ -86,8 +117,6 @@ return 1
  */
 export class RedisBackend implements QueueBackend {
   private redis: TekirRedis
-  private failedKey = 'tekir:queue:failed'
-  private recordPrefix = 'tekir:queue:record:'
 
   /**
    * Create a new RedisBackend.
@@ -98,16 +127,39 @@ export class RedisBackend implements QueueBackend {
     this.redis = redis
   }
 
+  private redisKey(key: string): string {
+    return this.redis.keyName ? this.redis.keyName(key) : key
+  }
+
   private queueKey(queue: string): string {
-    return `tekir:queue:${queue}`
+    return this.redisKey(`tekir:queue:${queue}`)
   }
 
   private processingKey(queue: string): string {
-    return `tekir:queue:processing:${queue}`
+    return this.redisKey(`tekir:queue:processing:${queue}`)
   }
 
   private recordKey(id: string): string {
     return `${this.recordPrefix}${id}`
+  }
+
+  private get recordPrefix(): string { return this.redisKey('tekir:queue:record:') }
+  private get failedKey(): string { return this.redisKey('tekir:queue:failed') }
+  private get delayedKey(): string { return this.redisKey('tekir:queue:delayed') }
+
+  // Queue lists and Lua scripts necessarily use Redis' raw command namespace.
+  // Keep records in that same namespace; mixing prefix-aware get/set with raw
+  // list keys breaks claims whenever the shared @tekir/redis client has a prefix.
+  private async rawGet(key: string): Promise<string | null> {
+    return this.redis.send('GET', [key])
+  }
+
+  private async rawSet(key: string, value: string): Promise<void> {
+    await this.redis.send('SET', [key, value])
+  }
+
+  private async rawDel(...keys: string[]): Promise<void> {
+    if (keys.length) await this.redis.send('DEL', keys)
   }
 
   /**
@@ -129,11 +181,11 @@ export class RedisBackend implements QueueBackend {
    * @param record - The job record to enqueue.
    */
   async push(record: JobRecord): Promise<void> {
-    await this.redis.set(this.recordKey(record.id), JSON.stringify(record))
+    await this.rawSet(this.recordKey(record.id), JSON.stringify(record))
     if (record.availableAt <= Date.now()) {
       await this.redis.send('LPUSH', [this.queueKey(record.queue), record.id])
     } else {
-      await this.redis.send('ZADD', ['tekir:queue:delayed', String(record.availableAt), record.id])
+      await this.redis.send('ZADD', [this.delayedKey, String(record.availableAt), record.id])
     }
   }
 
@@ -170,7 +222,7 @@ export class RedisBackend implements QueueBackend {
     if (!ids.length) return
     const cutoff = Date.now() - VISIBILITY_TIMEOUT_MS
     for (const id of ids) {
-      const raw = await this.redis.get(this.recordKey(id))
+      const raw = await this.rawGet(this.recordKey(id))
       if (!raw) continue
       const record: JobRecord = JSON.parse(raw)
       const reservedAt = (record as any).reservedAt as number | undefined
@@ -195,28 +247,22 @@ export class RedisBackend implements QueueBackend {
     record.status = 'pending'
     delete (record as any).claimToken
     delete (record as any).reservedAt
-    await this.redis.set(this.recordKey(record.id), JSON.stringify(record))
-    // Drop the claim from the processing list so recovery won't double-requeue.
-    await this.redis.send('LREM', [this.processingKey(record.queue), '0', record.id])
-    if (record.availableAt <= Date.now()) {
-      await this.redis.send('LPUSH', [this.queueKey(record.queue), record.id])
-    } else {
-      await this.redis.send('ZADD', ['tekir:queue:delayed', String(record.availableAt), record.id])
-    }
+    await this._eval(
+      REQUEUE_SCRIPT,
+      [this.recordKey(record.id), this.processingKey(record.queue), this.queueKey(record.queue), this.delayedKey],
+      [JSON.stringify(record), record.id, String(record.availableAt), String(Date.now())],
+    )
   }
 
   private async promoteDelayed(queue: string): Promise<void> {
     const now = String(Date.now())
-    const ids: string[] = await this.redis.send('ZRANGEBYSCORE', ['tekir:queue:delayed', '0', now]) || []
+    const ids: string[] = await this.redis.send('ZRANGEBYSCORE', [this.delayedKey, '0', now]) || []
     for (const id of ids) {
-      const raw = await this.redis.get(this.recordKey(id))
-      if (raw) {
-        const record: JobRecord = JSON.parse(raw)
-        if (record.queue === queue) {
-          await this.redis.send('ZREM', ['tekir:queue:delayed', id])
-          await this.redis.send('LPUSH', [this.queueKey(queue), id])
-        }
-      }
+      await this._eval(
+        PROMOTE_SCRIPT,
+        [this.recordKey(id), this.delayedKey, this.queueKey(queue)],
+        [id, queue, now],
+      )
     }
   }
 
@@ -231,7 +277,7 @@ export class RedisBackend implements QueueBackend {
     const ids: string[] = await this.redis.send('LRANGE', [this.queueKey(queue), '0', String(count - 1)]) || []
     const records: JobRecord[] = []
     for (const id of ids) {
-      const raw = await this.redis.get(this.recordKey(id))
+      const raw = await this.rawGet(this.recordKey(id))
       if (raw) records.push(JSON.parse(raw))
     }
     return records
@@ -253,7 +299,7 @@ export class RedisBackend implements QueueBackend {
    * @param queue - The queue name to purge.
    */
   async purge(queue: string): Promise<void> {
-    await this.redis.del(this.queueKey(queue), this.processingKey(queue))
+    await this.rawDel(this.queueKey(queue), this.processingKey(queue))
   }
 
   /**
@@ -263,7 +309,7 @@ export class RedisBackend implements QueueBackend {
    * @param reason - A human-readable failure reason.
    */
   async markFailed(id: string, reason: string, failedRecord?: JobRecord): Promise<void> {
-    const raw = await this.redis.get(this.recordKey(id))
+    const raw = await this.rawGet(this.recordKey(id))
     // Prefer the live record passed by the worker so its incremented attempts
     // count is persisted; fall back to the stored copy.
     const record: JobRecord | null = failedRecord ?? (raw ? JSON.parse(raw) : null)
@@ -273,7 +319,7 @@ export class RedisBackend implements QueueBackend {
     record.failedReason = reason
     delete (record as any).claimToken
     delete (record as any).reservedAt
-    await this.redis.set(this.recordKey(id), JSON.stringify(record))
+    await this.rawSet(this.recordKey(id), JSON.stringify(record))
     // Release the claim so a crashed-worker recovery pass won't requeue it.
     await this.redis.send('LREM', [this.processingKey(record.queue), '0', id])
     await this.redis.send('LPUSH', [this.failedKey, id])
@@ -284,14 +330,14 @@ export class RedisBackend implements QueueBackend {
    *
    * @param id - The job ID.
    */
-  async markCompleted(id: string): Promise<void> {
-    const raw = await this.redis.get(this.recordKey(id))
+  async markCompleted(id: string, _completedRecord?: JobRecord): Promise<void> {
+    const raw = await this.rawGet(this.recordKey(id))
     if (!raw) return
     const record: JobRecord = JSON.parse(raw)
     record.status = 'completed'
     delete (record as any).claimToken
     delete (record as any).reservedAt
-    await this.redis.set(this.recordKey(id), JSON.stringify(record))
+    await this.rawSet(this.recordKey(id), JSON.stringify(record))
     // Remove the now-finished claim from the processing list.
     await this.redis.send('LREM', [this.processingKey(record.queue), '0', id])
   }
@@ -305,7 +351,7 @@ export class RedisBackend implements QueueBackend {
     const ids: string[] = await this.redis.send('LRANGE', [this.failedKey, '0', '-1']) || []
     const records: JobRecord[] = []
     for (const id of ids) {
-      const raw = await this.redis.get(this.recordKey(id))
+      const raw = await this.rawGet(this.recordKey(id))
       if (raw) records.push(JSON.parse(raw))
     }
     return records
@@ -318,7 +364,7 @@ export class RedisBackend implements QueueBackend {
    * @returns The job record if found, or `null`.
    */
   async getById(id: string): Promise<JobRecord | null> {
-    const raw = await this.redis.get(this.recordKey(id))
+    const raw = await this.rawGet(this.recordKey(id))
     return raw ? JSON.parse(raw) : null
   }
 
@@ -329,7 +375,7 @@ export class RedisBackend implements QueueBackend {
    * @throws Error if no job exists with the given ID.
    */
   async requeueFailed(id: string): Promise<void> {
-    const raw = await this.redis.get(this.recordKey(id))
+    const raw = await this.rawGet(this.recordKey(id))
     if (!raw) throw new Error(`No job with id: ${id}`)
     const record: JobRecord = JSON.parse(raw)
     record.status = 'pending'
@@ -337,7 +383,7 @@ export class RedisBackend implements QueueBackend {
     record.failedReason = undefined
     record.attempts = 0
     record.availableAt = Date.now()
-    await this.redis.set(this.recordKey(id), JSON.stringify(record))
+    await this.rawSet(this.recordKey(id), JSON.stringify(record))
     await this.redis.send('LREM', [this.failedKey, '1', id])
     await this.redis.send('LPUSH', [this.queueKey(record.queue), id])
   }

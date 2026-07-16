@@ -1,6 +1,22 @@
 import { test, expect, describe, beforeEach } from 'bun:test'
 import { MemorySessionStore } from '../src/stores/memory'
 import { Session } from '../src/session'
+import { RedisSessionStore } from '../src/stores/redis'
+
+describe('RedisSessionStore', () => {
+  test('writes payload and TTL atomically through setEx', async () => {
+    const calls: unknown[][] = []
+    const redis = {
+      get: async () => null,
+      setEx: async (...args: unknown[]) => { calls.push(args) },
+      expire: async () => {},
+      del: async () => {},
+    }
+    const store = new RedisSessionStore(redis, 'sess:')
+    await store.write('abc', { userId: 1 }, 120)
+    expect(calls).toEqual([['sess:abc', JSON.stringify({ userId: 1 }), 120]])
+  })
+})
 
 describe('MemorySessionStore', () => {
   let store: MemorySessionStore
@@ -44,6 +60,19 @@ describe('MemorySessionStore', () => {
     await store.write('ow', { v: 1 }, 60)
     await store.write('ow', { v: 2 }, 60)
     expect(await store.read('ow')).toEqual({ v: 2 })
+  })
+
+  test('does not expose live stored objects by reference', async () => {
+    const input = { data: { user: { role: 'user' } }, flash: {} }
+    await store.write('isolated', input, 60)
+    input.data.user.role = 'admin'
+
+    const first = await store.read('isolated') as typeof input
+    expect(first.data.user.role).toBe('user')
+    first.data.user.role = 'owner'
+
+    const second = await store.read('isolated') as typeof input
+    expect(second.data.user.role).toBe('user')
   })
 
   test('destroy nonexistent does not throw', async () => {
@@ -155,5 +184,40 @@ describe('Session object', () => {
   test('constructor with initial data', () => {
     const sess = new Session('init-id', store, 60, { data: { preloaded: true }, flash: {} })
     expect<unknown>(sess.get('preloaded')).toBe(true)
+  })
+
+  test('preserves null and ignores inherited or prototype keys from a store', () => {
+    const polluted = JSON.parse('{"data":{"value":null,"__proto__":{"admin":true}},"flash":{}}')
+    const sess = new Session('safe', store, 60, polluted)
+    expect(sess.get('value', 'fallback')).toBeNull()
+    expect(sess.has('toString')).toBe(false)
+    expect(sess.has('__proto__')).toBe(false)
+    expect(sess.get('admin')).toBeUndefined()
+  })
+})
+
+describe('DatabaseSessionStore initialization', () => {
+  test('surfaces table creation failures', async () => {
+    const db = { exec: async () => { throw new Error('database unavailable') }, queryOne: async () => null, run: async () => {} }
+    const { DatabaseSessionStore } = await import('../src/stores/database')
+    const store = new DatabaseSessionStore(db)
+    await expect(store.read('id')).rejects.toThrow('Failed to initialize session table')
+  })
+
+  test('initializes the table before destroy and touch', async () => {
+    const calls: string[] = []
+    const db = {
+      exec: async () => { calls.push('exec') },
+      run: async (sql: string) => { calls.push(sql.startsWith('DELETE') ? 'delete' : 'update') },
+    }
+    const { DatabaseSessionStore } = await import('../src/stores/database')
+    const destroyStore = new DatabaseSessionStore(db)
+    await destroyStore.destroy('id')
+    expect(calls).toEqual(['exec', 'delete'])
+
+    calls.length = 0
+    const touchStore = new DatabaseSessionStore(db)
+    await touchStore.touch('id', 60)
+    expect(calls).toEqual(['exec', 'update'])
   })
 })

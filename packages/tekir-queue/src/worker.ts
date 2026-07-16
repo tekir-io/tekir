@@ -29,7 +29,7 @@ export class Worker extends EventEmitter {
   private _active: boolean = false
   private _pollInterval: number = 500
   private _timer: ReturnType<typeof setTimeout> | null = null
-  private _resolve?: () => void
+  private _stopWaiters: Array<() => void> = []
   private _jobRegistry: Map<string, new (...args: unknown[]) => BaseJob>
 
   /**
@@ -128,33 +128,47 @@ export class Worker extends EventEmitter {
       this.emitter.emit('stopped', { queue: this.queueName })
       return Promise.resolve()
     }
-    return new Promise(resolve => {
-      this._resolve = resolve
-    })
+    return new Promise(resolve => { this._stopWaiters.push(resolve) })
   }
 
   private schedule(): void {
     if (!this._active) return
-    this._timer = setTimeout(() => this.tick(), this._pollInterval)
+    this._timer = setTimeout(() => {
+      // A backend outage must not turn into an unhandled rejection and
+      // permanently kill polling. tick() owns rescheduling in its finally.
+      void this.tick()
+    }, this._pollInterval)
   }
 
   private async tick(): Promise<void> {
     if (!this._active) return
-
-    while (this._running < this._concurrency) {
-      const record = await this.backend.pop(this.queueName)
-      if (!record) break
-      this._running++
-      this.process(record).finally(() => {
-        this._running--
-        if (!this._active && this._running === 0 && this._resolve) {
-          this.emitter.emit('stopped', { queue: this.queueName })
-          this._resolve()
-        }
-      })
+    try {
+      while (this._active && this._running < this._concurrency) {
+        const record = await this.backend.pop(this.queueName)
+        if (!record) break
+        this._running++
+        void this.process(record).catch(async (err: unknown) => {
+          // Infrastructure errors (for example Redis dropping while marking a
+          // result) escape process(). Best-effort release prevents memory
+          // backends from losing the already-popped record.
+          try { await this.backend.requeue(record) } catch {}
+          this.emitter.emit('workerError', { queue: this.queueName, id: record.id, error: err })
+        }).finally(() => {
+          this._running--
+          if (!this._active && this._running === 0) this.finishStop()
+        })
+      }
+    } catch (err: unknown) {
+      this.emitter.emit('workerError', { queue: this.queueName, error: err })
+    } finally {
+      this.schedule()
     }
+  }
 
-    this.schedule()
+  private finishStop(): void {
+    this.emitter.emit('stopped', { queue: this.queueName })
+    const waiters = this._stopWaiters.splice(0)
+    for (const resolve of waiters) resolve()
   }
 
   private async process(record: JobRecord): Promise<void> {
@@ -163,7 +177,7 @@ export class Worker extends EventEmitter {
     try {
       const job = this.deserialize(record.payload)
       await job.handle()
-      await this.backend.markCompleted(record.id)
+      await this.backend.markCompleted(record.id, record)
       this.emitter.emit('completed', { id: record.id, queue: record.queue, payload: record.payload })
     } catch (err: unknown) {
       const reason = (err instanceof Error ? err.message : null) ?? String(err)

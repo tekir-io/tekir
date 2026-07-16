@@ -1,6 +1,6 @@
 // Garbage collection hint — Bun.gc() on Bun, global.gc() on Node (--expose-gc), no-op otherwise
 
-import { isBun } from './detect'
+import { isBun } from './detect.js'
 
 /**
  * Hint the runtime to run garbage collection.

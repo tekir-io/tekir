@@ -8,12 +8,12 @@
     "start": "bun run index.ts start"
   },
   "dependencies": {
-    "@tekir/core": "^0.1.34",
-    "@tekir/db": "^0.1.4",
+    "@tekir/core": "^0.1.35",
+    "@tekir/db": "^0.1.5",
     "@tekir/cors": "^0.1.5",
     "@tekir/bodyparser": "^0.1.5",
     "@tekir/http-decorators": "^0.1.2",
-    "@tekir/next": "^0.1.4",
+    "@tekir/next": "^0.1.5",
     "@tekir/swagger": "^0.1.4",
     "next": "^16.2.6",
     "react": "^19.0.0",

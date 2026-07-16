@@ -136,6 +136,13 @@ describe('Deep redaction', () => {
     obj.self = obj
     expect(() => logger.info(obj, 'circular')).not.toThrow()
   })
+
+  test('structured data cannot forge the selected log level', () => {
+    const logger = new Logger({ level: 'info', pretty: false, timestamp: false })
+    logger.error({ level: 'trace', event: 'failed' } as any, 'boom')
+    const out = JSON.parse(spy.mock.calls[0][0])
+    expect(out.level).toBe('error')
+  })
 })
 
 // ── FileTransport bounded queue ──────────────────────────────────────────────
@@ -172,6 +179,20 @@ describe('FileTransport bounded queue', () => {
     }
     expect(ft.droppedCount).toBe(0)
     rmSync(testDir, { recursive: true, force: true })
+  })
+
+  test('background write failures are observed instead of becoming unhandled rejections', async () => {
+    rmSync(testDir, { recursive: true, force: true })
+    let observed: unknown
+    const ft = new FileTransport({
+      path: logPath,
+      onError: (error) => { observed = error },
+    })
+    ;(ft as any)._dirReady = Promise.reject(new Error('disk unavailable'))
+    ft.write({ level: 'info', msg: 'one', name: 'app' })
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    expect(ft.errorCount).toBe(1)
+    expect(observed).toBeInstanceOf(Error)
   })
 })
 

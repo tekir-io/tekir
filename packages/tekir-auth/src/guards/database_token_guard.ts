@@ -88,8 +88,12 @@ export class DatabaseTokenGuard<T extends AuthUser = AuthUser> implements AuthGu
       this._tableReady = true
     } catch (err) {
       // Surface schema/setup failures instead of silently swallowing them;
-      // a hidden CREATE failure makes every later query fail mysteriously.
-      console.error(`[DatabaseTokenGuard] failed to ensure table "${this.config.table}":`, err)
+      // a hidden CREATE failure makes every later query fail mysteriously and
+      // could make callers mistake an infrastructure outage for bad credentials.
+      throw new Error(
+        `[DatabaseTokenGuard] failed to ensure table "${this.config.table}"`,
+        { cause: err },
+      )
     }
   }
 

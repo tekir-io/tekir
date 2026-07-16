@@ -147,7 +147,7 @@ export class Social {
       state = nonce
     }
 
-    return { url: p.getAuthUrl(state, options?.scopes, pkce.challenge), state, codeVerifier: pkce.verifier, nonce }
+    return { url: p.getAuthUrl(state, options?.scopes, pkce.challenge, nonce), state, codeVerifier: pkce.verifier, nonce }
   }
 
   /** @deprecated Use redirect() instead */
@@ -173,7 +173,8 @@ export class Social {
    *
    * @example
    * const storedState = ctx.session.pull('oauth_state')
-   * const { user } = await social.handleCallback('google', query.code, query.state, storedState)
+   * const codeVerifier = ctx.session.pull('oauth_code_verifier')
+   * const { user } = await social.handleCallback('google', query.code, query.state, storedState, { codeVerifier })
    */
   async handleCallback(provider: string, code: string, state: string, storedState?: string, options?: { codeVerifier?: string; nonce?: string }): Promise<{
     user: SocialUser
@@ -212,12 +213,18 @@ export class Social {
     }
 
     // Exchange code for tokens (PKCE verifier binds the code to this request).
+    if (!options?.codeVerifier) {
+      throw new Error('OAuth callback is missing the PKCE codeVerifier returned by redirect()')
+    }
     const p = this.use(provider)
-    const tokens = await p.exchangeCode(code, options?.codeVerifier)
+    const tokens = await p.exchangeCode(code, options.codeVerifier)
 
     // Fetch user profile. Pass the id_token + expected nonce so OIDC providers
     // (Apple) can verify signature and bind the token to this request.
-    const user = await p.getUser(tokens.accessToken, { idToken: tokens.idToken, nonce: options?.nonce })
+    const expectedNonce = options.nonce
+      ?? (typeof payload.bindNonce === 'string' ? payload.bindNonce : undefined)
+      ?? (!this.secret ? state : undefined)
+    const user = await p.getUser(tokens.accessToken, { idToken: tokens.idToken, nonce: expectedNonce })
     user.refreshToken = tokens.refreshToken || null
 
     // Hide tokens/raw from default serialization to avoid leaking them into

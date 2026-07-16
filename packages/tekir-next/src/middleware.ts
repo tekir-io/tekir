@@ -25,6 +25,20 @@ export function next(server: any, config: NextConfig = {}) {
 
   let nextPort: number | null = null
   let initialized = false
+  let nextHttpServer: ReturnType<typeof createServer> | null = null
+  let nextApp: any = null
+
+  server.onStop?.(async () => {
+    const httpServer = nextHttpServer
+    nextHttpServer = null
+    nextPort = null
+    initialized = false
+    if (httpServer) {
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()))
+    }
+    if (typeof nextApp?.close === 'function') await nextApp.close()
+    nextApp = null
+  })
 
   async function initNext() {
     if (initialized) return
@@ -46,7 +60,7 @@ export function next(server: any, config: NextConfig = {}) {
     try {
       const mod = await import('next')
       const createNext = mod.default || mod
-      const nextApp = createNext({
+      nextApp = createNext({
         dev: getIsDev(),
         dir: absDir,
         conf: config.conf,
@@ -57,8 +71,12 @@ export function next(server: any, config: NextConfig = {}) {
 
       // Start internal HTTP server for Next.js
       const httpServer = createServer((req, res) => handler(req, res))
-      await new Promise<void>((resolve) => {
+      nextHttpServer = httpServer
+      await new Promise<void>((resolve, reject) => {
+        const onError = (error: Error) => reject(error)
+        httpServer.once('error', onError)
         httpServer.listen(0, '127.0.0.1', () => {
+          ;(httpServer as any).removeListener('error', onError)
           const addr = httpServer.address()
           nextPort = typeof addr === 'object' && addr ? addr.port : null
           resolve()
@@ -66,6 +84,12 @@ export function next(server: any, config: NextConfig = {}) {
       })
       started = true
     } catch (err: any) {
+      if (nextHttpServer) {
+        nextHttpServer.close()
+        nextHttpServer = null
+      }
+      if (typeof nextApp?.close === 'function') await nextApp.close().catch(() => {})
+      nextApp = null
       logger.error(`[next] Failed to start: ${err.message}`)
     } finally {
       // A transient startup failure should not wedge the app into a

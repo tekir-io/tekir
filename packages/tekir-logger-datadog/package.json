@@ -1,6 +1,6 @@
 {
   "name": "@tekir/logger-datadog",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Datadog logging transport integration",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/logger": "^0.1.2"
+    "@tekir/logger": "^0.1.3"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

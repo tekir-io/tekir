@@ -10,6 +10,15 @@ process.env.APP_KEY = 'test-app-key-for-social-auth-signing'
 describe('State tokens', () => {
   const secret = 'test-secret-key-123'
 
+  async function signedPayload(payload: unknown): Promise<string> {
+    const data = btoa(JSON.stringify(payload))
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+    )
+    const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data))
+    return `${data}.${btoa(String.fromCharCode(...new Uint8Array(sig)))}`
+  }
+
   test('createState returns a signed token', async () => {
     const token = await createState({ redirect: '/dashboard' }, secret)
     expect(token).toContain('.')
@@ -57,6 +66,18 @@ describe('State tokens', () => {
     expect(await verifyState('no-dot-here', secret)).toBeNull()
     expect(await verifyState('', secret)).toBeNull()
     expect(await verifyState('.', secret)).toBeNull()
+  })
+
+  test('verifyState rejects signed future and non-numeric timestamps', async () => {
+    const future = await signedPayload({ timestamp: Date.now() + 60_000, nonce: 'n' })
+    const nonNumeric = await signedPayload({ timestamp: 'not-a-number', nonce: 'n' })
+    expect(await verifyState(future, secret)).toBeNull()
+    expect(await verifyState(nonNumeric, secret)).toBeNull()
+  })
+
+  test('verifyState rejects a signed payload without a nonce', async () => {
+    const token = await signedPayload({ timestamp: Date.now() })
+    expect(await verifyState(token, secret)).toBeNull()
   })
 
   test('state preserves custom data', async () => {

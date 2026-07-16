@@ -1,6 +1,6 @@
 {
   "name": "@tekir/hash",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Password hashing with Bcrypt, Argon2, Scrypt",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,8 +39,8 @@
     }
   },
   "dependencies": {
-    "@tekir/runtime": "^0.1.4",
-    "@tekir/core": "^0.1.34"
+    "@tekir/runtime": "^0.1.5",
+    "@tekir/core": "^0.1.35"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

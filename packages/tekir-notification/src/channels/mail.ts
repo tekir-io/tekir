@@ -1,4 +1,6 @@
 import type { BaseNotification } from '../base'
+import type { MailAdapter } from '../types'
+import { sanitizeMessage } from '@tekir/mail'
 
 /**
  * Send a notification via the mail channel using `@tekir/mail`.
@@ -16,7 +18,8 @@ import type { BaseNotification } from '../base'
  */
 export async function sendMailChannel(
   _userId: string,
-  notification: BaseNotification
+  notification: BaseNotification,
+  mail?: MailAdapter
 ): Promise<void> {
   if (typeof notification.toMail !== 'function') {
     throw new Error(
@@ -25,12 +28,9 @@ export async function sendMailChannel(
   }
   const payload = (notification.toMail as () => any)()
 
-  let mod: any
-  try {
-    mod = await import('@tekir/mail') as any
-  } catch {
+  if (!mail) {
     throw new Error(
-      '[@tekir/notification] Mail channel requires @tekir/mail. Run: bun add @tekir/mail'
+      '[@tekir/notification] No mail adapter configured. Register MailProvider before NotificationProvider or pass notify.configure({ mail }).'
     )
   }
 
@@ -38,9 +38,5 @@ export async function sendMailChannel(
   // so the notification -> mail path can never inject headers regardless of how
   // the resolved mail object is wired. @tekir/mail's dispatch() also sanitizes,
   // but this channel may pass a raw payload, so do not rely on that alone.
-  const safePayload =
-    typeof mod.sanitizeMessage === 'function' ? mod.sanitizeMessage(payload) : payload
-
-  const mail = mod.default ?? mod
-  await mail.send(safePayload)
+  await mail.dispatch(sanitizeMessage(payload))
 }

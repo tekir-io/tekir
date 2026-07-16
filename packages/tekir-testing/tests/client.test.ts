@@ -48,6 +48,10 @@ beforeAll(() => {
         return Response.json({ message: 'Bad Request', statusCode: 400 }, { status: 400 })
       }
 
+      if (url.pathname === '/head') {
+        return new Response(null, { headers: { 'x-received': req.headers.get('x-test') ?? '' } })
+      }
+
       return new Response('not found', { status: 404 })
     },
   })
@@ -100,5 +104,14 @@ describe('assertError', () => {
     const c = client(baseUrl)
     const res = await c.get('/wrapped-error')
     expect(() => res.assertError({ message: 'wrong' })).toThrow()
+  })
+})
+
+describe('client.withHeader()', () => {
+  test('retains the HEAD method and applies the default header', async () => {
+    const c = client(baseUrl).withHeader('x-test', 'present')
+    const res = await c.head('/head')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('x-received')).toBe('present')
   })
 })

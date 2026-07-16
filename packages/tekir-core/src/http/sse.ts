@@ -9,7 +9,7 @@ export function sse(data: SSEEvent | string): string {
   let result = ''
   if (data.event) result += `event: ${strip(data.event)}\n`
   if (data.id) result += `id: ${strip(data.id)}\n`
-  if (data.retry) result += `retry: ${strip(String(data.retry))}\n`
+  if (data.retry !== undefined) result += `retry: ${strip(String(data.retry))}\n`
   const payload = typeof data.data === 'object' ? JSON.stringify(data.data) : strip(String(data.data))
   result += `data: ${payload}\n\n`
   return result

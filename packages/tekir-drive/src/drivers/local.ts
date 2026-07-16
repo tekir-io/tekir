@@ -186,6 +186,10 @@ export class LocalDriver implements DiskDriver {
    */
   async put(key: string, content: Buffer | string | ReadableStream): Promise<void> {
     const path = this.resolve(key)
+    // Check the nearest existing ancestor before mkdir: otherwise a symlinked
+    // parent could cause recursive mkdir to create directories outside root
+    // before the post-mkdir containment check rejects the write.
+    await this.assertContained(key, path)
     await mkdir(dirname(path), { recursive: true }).catch(() => {})
     // Verify after mkdir so the parent directory exists and its real path
     // (resolving any symlinks) is confirmed under root before we write.
@@ -269,6 +273,7 @@ export class LocalDriver implements DiskDriver {
   async copy(source: string, destination: string): Promise<void> {
     const srcPath = await this.safePath(source)
     const destPath = this.resolve(destination)
+    await this.assertContained(destination, destPath)
     await mkdir(dirname(destPath), { recursive: true }).catch(() => {})
     await this.assertContained(destination, destPath)
     await copyFile(srcPath, destPath)
@@ -289,6 +294,7 @@ export class LocalDriver implements DiskDriver {
   async move(source: string, destination: string): Promise<void> {
     const srcPath = await this.safePath(source)
     const destPath = this.resolve(destination)
+    await this.assertContained(destination, destPath)
     await mkdir(dirname(destPath), { recursive: true }).catch(() => {})
     await this.assertContained(destination, destPath)
     await rename(srcPath, destPath)

@@ -1,6 +1,6 @@
 export type {
   MailPayload, DatabasePayload, PushPayload,
-  ChannelName, DatabaseRow, DbAdapter,
+  ChannelName, DatabaseRow, DbAdapter, MailAdapter,
   FcmConfig, NotificationConfig,
 } from './types'
 export { BaseNotification } from './base'

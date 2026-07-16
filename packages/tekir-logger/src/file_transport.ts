@@ -23,6 +23,8 @@ export interface FileTransportConfig {
    * Set to `0` to disable the bound (unbounded, not recommended).
    */
   maxQueueSize?: number
+  /** Invoked when an asynchronous background write fails. */
+  onError?: (error: unknown) => void
 }
 
 /**
@@ -48,6 +50,8 @@ export class FileTransport implements LogTransport {
   private _writing = false
   private _queue: string[] = []
   private _dropped = 0
+  private _errors = 0
+  private _onError?: (error: unknown) => void
 
   /**
    * @param config - File transport configuration including path and rotation settings.
@@ -62,6 +66,7 @@ export class FileTransport implements LogTransport {
     this.prefix = config.prefix ?? ''
     this.suffix = config.suffix ?? ''
     this.maxQueueSize = config.maxQueueSize ?? 10000
+    this._onError = config.onError
 
     this._dirReady = mkdir(this.dir, { recursive: true }).then(() => {}).catch(() => {})
   }
@@ -81,12 +86,24 @@ export class FileTransport implements LogTransport {
       this._dropped++
     }
     this._queue.push(line)
-    this._flush()
+    // write() is intentionally synchronous, so observe background failures
+    // here instead of leaking an unhandled rejected promise to the process.
+    void this._flush().catch((error) => this._reportError(error))
   }
 
   /** Number of log lines dropped so far due to a full queue. */
   get droppedCount(): number {
     return this._dropped
+  }
+
+  /** Number of asynchronous file write failures observed by the transport. */
+  get errorCount(): number {
+    return this._errors
+  }
+
+  private _reportError(error: unknown): void {
+    this._errors++
+    try { this._onError?.(error) } catch {}
   }
 
   /** Wait for all queued writes to complete */
@@ -102,9 +119,10 @@ export class FileTransport implements LogTransport {
     await this._dirReady
     try {
       while (this._queue.length > 0) {
-        const line = this._queue.shift()!
+        const line = this._queue[0]!
         await this._rotateIfNeeded()
         await appendFile(this.path, line)
+        this._queue.shift()
       }
     } finally {
       this._writing = false

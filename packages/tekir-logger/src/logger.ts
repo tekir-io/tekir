@@ -203,8 +203,10 @@ export class Logger {
       : merged
 
     const entry: LogEntry = {
-      level,
       ...redacted,
+      // Structured fields are untrusted application data. They must not be
+      // able to forge the severity selected by the logger method.
+      level,
       ...(msg ? { msg } : {}),
       ...(this.timestamp ? { time: Date.now() } : {}),
       name: this.name,

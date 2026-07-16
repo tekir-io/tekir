@@ -17,7 +17,7 @@ export class ResendTransport implements Transport {
   private baseUrl: string
 
   constructor(private config: ResendConfig) {
-    this.baseUrl = config.baseUrl ?? 'https://api.resend.com'
+    this.baseUrl = (config.baseUrl ?? 'https://api.resend.com').replace(/\/+$/, '')
   }
 
   /**

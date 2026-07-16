@@ -7,6 +7,19 @@ export interface Command {
   run(args: string[], ctx: any): Promise<void>
 }
 
+function assertScaffoldName(name: string, kind: string): string {
+  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(name)) {
+    throw new Error(`Invalid ${kind} name "${name}". Use letters, numbers, underscores, and hyphens only.`)
+  }
+  return name
+}
+
+function toClassName(name: string): string {
+  return name.split(/[_-]+/).filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('')
+}
+
 export const migrateCommand: Command = {
   name: 'migrate',
   description: 'Run pending database migrations',
@@ -26,6 +39,7 @@ export const migrateCommand: Command = {
       }
     } catch (e: any) {
       tekir.logger.error(`Migration failed: ${e.message}`)
+      throw e
     }
   },
 }
@@ -35,6 +49,8 @@ export const migrateGenerateCommand: Command = {
   description: 'Generate migration files from schema diff',
   async run(args, { appRoot, tekir }) {
     try {
+      const db = tekir.app.use('db')
+      if (db.driver !== 'sqlite') throw new Error('migrate:generate currently supports SQLite only')
       const { generateSQLiteDrizzleJson, generateSQLiteMigration } = await import('drizzle-kit/api')
       const config = tekir.config
       const schema = config('database.schema')
@@ -64,7 +80,7 @@ export const migrateGenerateCommand: Command = {
       }
 
       const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
-      const name = args[0] || 'migration'
+      const name = assertScaffoldName(args[0] || 'migration', 'migration')
       const fileName = `${timestamp}_${name}.sql`
       const sql = sqlStatements.join(';\n') + ';'
 
@@ -74,6 +90,7 @@ export const migrateGenerateCommand: Command = {
       tekir.logger.info(`SQL:\n${sql}`)
     } catch (e: any) {
       tekir.logger.error(`Generate failed: ${e.message}`)
+      throw e
     }
   },
 }
@@ -87,6 +104,7 @@ export const migratePushCommand: Command = {
       const config = tekir.config
       const schema = config('database.schema')
       const db = tekir.app.use('db')
+      if (db.driver !== 'sqlite') throw new Error('migrate:push currently supports SQLite only')
 
       if (!schema) { tekir.logger.error('No schema found in config/database.ts'); return }
 
@@ -99,6 +117,7 @@ export const migratePushCommand: Command = {
       }
     } catch (e: any) {
       tekir.logger.error(`Push failed: ${e.message}`)
+      throw e
     }
   },
 }
@@ -108,11 +127,32 @@ export const migrateDropCommand: Command = {
   description: 'Drop all tables',
   async run(_args, { tekir }) {
     const db = tekir.app.use('db')
-    const tables = await db.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-    for (const t of tables) {
-      await db.exec(`DROP TABLE IF EXISTS "${t.name}"`)
+    let tableNames: string[]
+    if (db.driver === 'sqlite') {
+      const tables = await db.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+      tableNames = tables.map((table: any) => String(table.name))
+    } else if (db.driver === 'postgres') {
+      const tables = await db.query("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+      tableNames = tables.map((table: any) => String(table.tablename))
+    } else if (db.driver === 'mysql') {
+      const tables = await db.query('SHOW TABLES')
+      tableNames = tables.map((table: any) => String(Object.values(table)[0]))
+    } else {
+      throw new Error(`migrate:drop does not support database driver "${db.driver}"`)
     }
-    tekir.logger.info(`Dropped ${tables.length} tables`)
+    if (db.driver === 'mysql') await db.exec('SET FOREIGN_KEY_CHECKS = 0')
+    try {
+      for (const name of tableNames) {
+        const quoted = db.driver === 'mysql'
+          ? `\`${name.replace(/`/g, '``')}\``
+          : `"${name.replace(/"/g, '""')}"`
+        const cascade = db.driver === 'postgres' ? ' CASCADE' : ''
+        await db.exec(`DROP TABLE IF EXISTS ${quoted}${cascade}`)
+      }
+    } finally {
+      if (db.driver === 'mysql') await db.exec('SET FOREIGN_KEY_CHECKS = 1')
+    }
+    tekir.logger.info(`Dropped ${tableNames.length} tables`)
   },
 }
 
@@ -125,6 +165,9 @@ export const migrateRollbackCommand: Command = {
     const { MigrationRunner } = await import('./migration/migration_runner')
     const runner = new MigrationRunner(db, migrationsDir)
     const step = args[0] ? parseInt(args[0], 10) : undefined
+    if (args[0] && (!Number.isInteger(step) || (step as number) <= 0)) {
+      throw new Error('Rollback step must be a positive integer')
+    }
 
     try {
       const { rolledBack } = await runner.runDown(step ? { step } : undefined)
@@ -136,6 +179,7 @@ export const migrateRollbackCommand: Command = {
       }
     } catch (e: any) {
       tekir.logger.error(`Rollback failed: ${e.message}`)
+      throw e
     }
   },
 }
@@ -182,6 +226,7 @@ export const migrateFreshCommand: Command = {
       tekir.logger.info(`Fresh migration complete (${migrated.length} migrations)`)
     } catch (e: any) {
       tekir.logger.error(`Fresh migration failed: ${e.message}`)
+      throw e
     }
   },
 }
@@ -204,6 +249,7 @@ export const seedCommand: Command = {
         tekir.logger.info(`Seeded: ${file}`)
       } catch (e: any) {
         tekir.logger.error(`Seeder ${file}: ${e.message}`)
+        throw e
       }
     }
   },
@@ -213,7 +259,7 @@ export const makeMigrationCommand: Command = {
   name: 'make:migration',
   description: 'Create a new migration file',
   async run(args, { appRoot, tekir }) {
-    const name = args[0]
+    const name = args[0] && assertScaffoldName(args[0], 'migration')
     if (!name) { tekir.logger.error('Usage: make:migration <name>'); return }
 
     const dir = join(appRoot, 'database', 'migrations')
@@ -221,7 +267,7 @@ export const makeMigrationCommand: Command = {
 
     const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
     const fileName = `${timestamp}_${name}.ts`
-    const className = name.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join('')
+    const className = toClassName(name)
     const tableName = name.replace(/^create_/, '').replace(/^add_.*_to_/, '')
 
     const content = `import { BaseMigration, type Schema } from '@tekir/db'
@@ -248,7 +294,7 @@ export const makeModelCommand: Command = {
   name: 'make:model',
   description: 'Create a new model',
   async run(args, { appRoot, tekir }) {
-    const name = args[0]
+    const name = args[0] && assertScaffoldName(args[0], 'model')
     if (!name) { tekir.logger.error('Usage: tekir make:model <Name>'); return }
 
     const dir = join(appRoot, 'app', 'models')
@@ -278,14 +324,14 @@ export const makeSeederCommand: Command = {
   name: 'make:seeder',
   description: 'Create a new seeder file',
   async run(args, { appRoot, tekir }) {
-    const name = args[0]
+    const name = args[0] && assertScaffoldName(args[0], 'seeder')
     if (!name) { tekir.logger.error('Usage: tekir make:seeder <name>'); return }
 
     const dir = join(appRoot, 'database', 'seeders')
     mkdirSync(dir, { recursive: true })
 
     const fileName = `${name}_seeder.ts`
-    const modelName = name.charAt(0).toUpperCase() + name.slice(1)
+    const modelName = toClassName(name)
     const content = `import { ${modelName} } from '~/models/${name}'
 
 export async function run() {

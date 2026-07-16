@@ -1,3 +1,4 @@
+import { getApp } from '@tekir/core'
 
 /**
  * Setup an in-memory test database with model tables.
@@ -39,24 +40,15 @@ interface TestDbModel {
  * ```
  */
 export async function setupTestDb(models: TestDbModel[]): Promise<() => Promise<void>> {
-  try {
-
-    const { getApp } = require('@tekir/core')
-    const db = getApp().use('db')
-    for (const model of models) {
-      await db.exec(model.createSQL)
-    }
-  } catch {}
+  const db = getApp().use('db')
+  for (const model of models) {
+    await db.exec(model.createSQL)
+  }
 
   return async () => {
-    try {
-
-      const { getApp } = require('@tekir/core')
-      const db = getApp().use('db')
-      for (const model of models) {
-        await db.exec(`DELETE FROM ${quoteIdentifier(model.table)}`)
-      }
-    } catch {}
+    for (const model of models) {
+      await db.exec(`DELETE FROM ${quoteIdentifier(model.table)}`)
+    }
   }
 }
 

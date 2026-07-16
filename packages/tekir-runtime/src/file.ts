@@ -1,6 +1,6 @@
 // File operations — abstraction over Bun.file/Bun.write and Node.js fs
 
-import { isBun } from './detect'
+import { isBun } from './detect.js'
 import { readFile as fsRead, writeFile as fsWrite, access, stat, mkdir, readdir } from 'node:fs/promises'
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path'
 

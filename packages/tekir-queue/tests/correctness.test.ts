@@ -171,3 +171,43 @@ describe('Worker — poison job handling', () => {
     expect(await queue.size()).toBe(0)
   })
 })
+
+class SuccessfulJob extends BaseJob {
+  async handle(): Promise<void> {}
+}
+
+describe('Worker — lifecycle and backend failures', () => {
+  test('recovers polling after a transient backend.pop rejection', async () => {
+    class FlakyBackend extends MemoryBackend {
+      calls = 0
+      override async pop(queue: string) {
+        if (this.calls++ === 0) throw new Error('temporary backend outage')
+        return super.pop(queue)
+      }
+    }
+    const backend = new FlakyBackend()
+    const queue = new Queue(backend)
+    queue.register(SuccessfulJob)
+    const record = await queue.dispatch(new SuccessfulJob())
+    const errors: unknown[] = []
+    queue.on('workerError', e => errors.push(e))
+    const worker = queue.worker().pollInterval(1).start()
+    await new Promise(r => setTimeout(r, 30))
+    await worker.stop()
+    expect(errors).toHaveLength(1)
+    expect((await queue.find(record.id))?.status).toBe('completed')
+  })
+
+  test('all concurrent stop callers resolve after an in-flight job', async () => {
+    class SlowJob extends BaseJob {
+      async handle(): Promise<void> { await new Promise(r => setTimeout(r, 20)) }
+    }
+    const queue = new Queue(new MemoryBackend())
+    queue.register(SlowJob)
+    await queue.dispatch(new SlowJob())
+    const worker = queue.worker().pollInterval(0).start()
+    // Let the worker claim the job before asking it to stop.
+    await new Promise(r => setTimeout(r, 5))
+    await Promise.all([worker.stop(), worker.stop()])
+  })
+})

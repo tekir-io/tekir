@@ -66,6 +66,16 @@ afterAll(async () => {
 })
 
 describe('RedisBackend — atomic claim (integration)', () => {
+  test('an orphaned pending id is removed instead of leaking into processing', async () => {
+    if (!available) return
+    const id = `${RUN}-orphan`
+    trackedIds.add(id)
+    await client.send('LPUSH', [`tekir:queue:${QUEUE}`, id])
+    expect(await backend.pop(QUEUE)).toBeNull()
+    const processing = await client.send('LRANGE', [`tekir:queue:processing:${QUEUE}`, '0', '-1'])
+    expect(processing).not.toContain(id)
+  })
+
   test('concurrent pops never double-claim the same job', async () => {
     if (!available) return
     await backend.push(record({ id: `${RUN}-only` }))

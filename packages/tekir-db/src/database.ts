@@ -8,6 +8,15 @@ import type {
 } from './types'
 import { QueryBuilder, InsertBuilder } from './query_builder'
 import { openDatabase, isBun } from '@tekir/runtime'
+import { createRequire } from 'node:module'
+import { drizzle as bunSqliteDrizzle } from 'drizzle-orm/bun-sqlite'
+import { drizzle as pgDrizzle } from 'drizzle-orm/node-postgres'
+import { drizzle as mysqlDrizzle } from 'drizzle-orm/mysql2'
+
+// Bun's ambient `require` can inherit an empty/foreign resolution base when
+// the package is loaded alongside source-linked workspaces. Anchor optional
+// driver resolution to this module instead.
+const localRequire = createRequire(import.meta.url)
 
 export type { SqliteConnectionConfig, PostgresConnectionConfig, MysqlConnectionConfig, ConnectionConfig, DatabaseConfig }
 
@@ -83,8 +92,9 @@ export class Database {
         raw = openDatabase(c.path || ':memory:', { readonly: c.readonly, wal: c.wal })
         raw.exec('PRAGMA foreign_keys = ON;')
         try {
-          const drizzleModule = isBun() ? 'drizzle-orm/bun-sqlite' : 'drizzle-orm/better-sqlite3'
-          const { drizzle: d } = require(drizzleModule)
+          const d = isBun()
+            ? bunSqliteDrizzle
+            : localRequire('drizzle-orm/better-sqlite3').drizzle
           // Drizzle needs the unwrapped raw driver, not our adapter
           const unwrapped = raw._raw || raw
           drizzle = d(unwrapped, config.schema ? { schema: config.schema } : undefined)
@@ -93,7 +103,7 @@ export class Database {
       }
       case 'postgres': {
         try {
-          const pg = require('pg')
+          const pg = localRequire('pg')
           const c = conn as PostgresConnectionConfig
           let url = c.connectionString || c.url || `postgres://${c.user}:${c.password}@${c.host || 'localhost'}:${c.port || 5432}/${c.database}`
           const needsSsl = c.ssl || url.includes('sslmode=require') || url.includes('sslmode=verify')
@@ -104,8 +114,9 @@ export class Database {
           raw = new pg.Pool({ connectionString: url, ssl: sslConfig, ...pgPoolSettings(c) })
           // Surface idle-client errors instead of crashing the process.
           raw.on('error', () => { /* connection-level error; pg reconnects on next query */ })
-          const { drizzle: d } = require('drizzle-orm/node-postgres')
-          drizzle = d(raw, config.schema ? { schema: config.schema } : undefined)
+          drizzle = config.schema
+            ? pgDrizzle(raw, { schema: config.schema })
+            : pgDrizzle(raw)
         } catch (e: any) {
           if (e.message?.includes('Cannot find')) throw new Error('PostgreSQL requires: bun add pg')
           if (e?.message) e.message = maskCredentials(e.message)
@@ -115,7 +126,7 @@ export class Database {
       }
       case 'mysql': {
         try {
-          const mysql = require('mysql2/promise')
+          const mysql = localRequire('mysql2/promise')
           const c = conn as MysqlConnectionConfig
           let url = c.connectionString || c.url || `mysql://${c.user}:${c.password}@${c.host || 'localhost'}:${c.port || 3306}/${c.database}`
           const needsSsl = c.ssl || url.includes('ssl-mode=REQUIRED') || url.includes('ssl=true')
@@ -124,8 +135,9 @@ export class Database {
           const mysqlSsl = resolveSsl(c.ssl, !!needsSsl)
           if (mysqlSsl) poolOpts.ssl = mysqlSsl
           raw = mysql.createPool(poolOpts)
-          const { drizzle: d } = require('drizzle-orm/mysql2')
-          drizzle = d(raw, config.schema ? { schema: config.schema } : undefined)
+          drizzle = config.schema
+            ? mysqlDrizzle(raw, { schema: config.schema, mode: 'default' })
+            : mysqlDrizzle(raw)
         } catch (e: any) {
           if (e.message?.includes('Cannot find')) throw new Error('MySQL requires: bun add mysql2')
           if (e?.message) e.message = maskCredentials(e.message)

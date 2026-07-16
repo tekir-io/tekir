@@ -7,7 +7,7 @@ export class SevkTransport implements Transport {
   private baseUrl: string
 
   constructor(private config: SevkConfig) {
-    this.baseUrl = config.baseUrl ?? 'https://api.sevk.io'
+    this.baseUrl = (config.baseUrl ?? 'https://api.sevk.io').replace(/\/+$/, '')
   }
 
   async send(message: MailMessage): Promise<void> {

@@ -37,15 +37,21 @@ function isUnsafeSegment(seg: string): boolean {
   return seg === '__proto__' || seg === 'constructor' || seg === 'prototype'
 }
 
-function redactDeep(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+function redactDeep(value: unknown, seen: WeakMap<object, unknown> = new WeakMap()): unknown {
   if (value === null || typeof value !== 'object') return value
-  if (seen.has(value as object)) return value
-  seen.add(value as object)
+  const existing = seen.get(value as object)
+  if (existing !== undefined) return existing
 
-  if (Array.isArray(value)) return value.map(v => redactDeep(v, seen))
+  if (Array.isArray(value)) {
+    const out: unknown[] = []
+    seen.set(value, out)
+    for (const item of value) out.push(redactDeep(item, seen))
+    return out
+  }
 
   const src = value as Record<string, unknown>
   const out: Record<string, unknown> = {}
+  seen.set(value as object, out)
   for (const key of Object.keys(src)) {
     out[key] = isSensitiveKey(key) ? REDACTED : redactDeep(src[key], seen)
   }
@@ -112,7 +118,7 @@ export function createConfigStore(): ConfigStore {
     const configName = parts[0]
     const configObj = store.get(configName)
 
-    if (!configObj) return defaultValue as T
+    if (configObj === undefined) return defaultValue as T
 
     let value: any = configObj
     for (let i = 1; i < parts.length; i++) {
@@ -120,6 +126,9 @@ export function createConfigStore(): ConfigStore {
       const seg = parts[i]
       // Block prototype-chain access so dot-paths cannot reach __proto__/constructor.
       if (isUnsafeSegment(seg)) return defaultValue as T
+      if ((typeof value !== 'object' && typeof value !== 'function') || !Object.hasOwn(value, seg)) {
+        return defaultValue as T
+      }
       value = value[seg]
     }
 

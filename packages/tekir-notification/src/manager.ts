@@ -65,7 +65,9 @@ export class Notification {
    * ```
    */
   async send(userId: string, notification: BaseNotification): Promise<void> {
-    const channels = notification.via(userId)
+    const channels = notification.via === BaseNotification.prototype.via && this.config.defaultChannels
+      ? this.config.defaultChannels
+      : notification.via(userId)
     // Per-channel error isolation: a single failing channel (e.g. a downed mail
     // transport) must not stop the others or surface as an unhandled rejection.
     const results = await Promise.allSettled(
@@ -155,7 +157,7 @@ export class Notification {
 
     switch (channel) {
       case 'mail':
-        await sendMailChannel(userId, notification)
+        await sendMailChannel(userId, notification, this.config.mail)
         break
       case 'database':
         await this._ensureDb().send(userId, notification)

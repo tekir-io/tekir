@@ -389,7 +389,7 @@ export async function tekir(options: TekirOptions = {}): Promise<TekirApp> {
         ...(hostname !== undefined ? { hostname } : {}),
         ...(idleTimeout !== undefined ? { idleTimeout } : {}),
       })
-      server.start()
+      await server.start()
 
       // Graceful shutdown in every mode (not just dev): catch SIGINT/SIGTERM
       // so providers (DB pools, queues) run their cleanup and in-flight
@@ -411,7 +411,7 @@ export async function tekir(options: TekirOptions = {}): Promise<TekirApp> {
     async shutdown() {
       for (const fn of _onShutdown) await fn()
       await app.shutdown()
-      server.stop()
+      await server.stop()
     },
   }
 

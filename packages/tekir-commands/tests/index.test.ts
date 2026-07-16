@@ -1,5 +1,43 @@
 import { test, expect, describe, mock } from 'bun:test'
-import { BaseCommand, parse, Kernel, colors, Logger, Table, Sticker, Instructions, Tasks, TerminalUI } from '../src/index'
+import { BaseCommand, parse, Kernel, colors, Logger, Table, Sticker, Instructions, Tasks, TerminalUI, Prompts } from '../src/index'
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+describe('Prompts.choice', () => {
+  test('creates a fresh readline interface when invalid input is re-prompted', async () => {
+    const prompts = new Prompts()
+    const answers = ['invalid', '2']
+    let interfaces = 0
+    ;(prompts as any).rl = () => {
+      interfaces++
+      return {
+        question(_prompt: string, callback: (answer: string) => void) { callback(answers.shift()!) },
+        close() {},
+      }
+    }
+    expect(await prompts.choice('Pick', ['one', 'two'])).toBe('two')
+    expect(interfaces).toBe(2)
+  })
+})
+
+describe('Kernel.discover confinement', () => {
+  test('does not import a command reached through an escaping symlink', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'tekir-commands-'))
+    const commands = join(root, 'commands')
+    mkdirSync(commands)
+    const outside = join(root, 'outside.js')
+    writeFileSync(outside, 'export default class Escaped { static commandName = "escaped" }')
+    symlinkSync(outside, join(commands, 'escaped.js'))
+    try {
+      const kernel = new Kernel()
+      await kernel.discover(commands)
+      expect((kernel as any).commands.has('escaped')).toBe(false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
 
 // Parser — 80 tests
 

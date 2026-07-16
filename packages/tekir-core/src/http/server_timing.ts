@@ -34,6 +34,9 @@ export class ServerTimingContext {
 
   /** Start a named timer */
   start(name: string): void {
+    if (!/^[A-Za-z][A-Za-z0-9_.-]*$/.test(name)) {
+      throw new Error(`Invalid Server-Timing metric name: "${name}"`)
+    }
     this.entries.set(name, { name, start: performance.now() })
   }
 
@@ -47,6 +50,12 @@ export class ServerTimingContext {
 
   /** Add a metric with a known duration */
   add(name: string, duration: number, description?: string): void {
+    if (!/^[A-Za-z][A-Za-z0-9_.-]*$/.test(name)) {
+      throw new Error(`Invalid Server-Timing metric name: "${name}"`)
+    }
+    if (!Number.isFinite(duration) || duration < 0) {
+      throw new Error(`Invalid Server-Timing duration for "${name}"`)
+    }
     this.entries.set(name, { name, duration, description })
   }
 
@@ -65,7 +74,10 @@ export class ServerTimingContext {
     for (const entry of this.entries.values()) {
       let part = entry.name
       if (entry.duration !== undefined) part += `;dur=${entry.duration.toFixed(1)}`
-      if (entry.description) part += `;desc="${entry.description}"`
+      if (entry.description) {
+        const description = entry.description.replace(/[\r\n]/g, ' ').replace(/(["\\])/g, '\\$1')
+        part += `;desc="${description}"`
+      }
       parts.push(part)
     }
 

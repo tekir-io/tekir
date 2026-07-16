@@ -1,5 +1,5 @@
 import { join, relative, isAbsolute, resolve } from 'path'
-import { existsSync, readdirSync, statSync } from 'fs'
+import { existsSync, lstatSync, readdirSync, statSync } from 'fs'
 
 export interface ViteEmbedOptions {
   /** Application root (where package.json lives). */
@@ -29,6 +29,9 @@ function walkDir(dir: string, base: string = dir): FileEntry[] {
   if (!existsSync(dir)) return out
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry)
+    // Build output should be self-contained. Following a symlink here could
+    // embed an arbitrary file outside dist into the compiled executable.
+    if (lstatSync(full).isSymbolicLink()) continue
     if (statSync(full).isDirectory()) {
       out.push(...walkDir(full, base))
     } else {

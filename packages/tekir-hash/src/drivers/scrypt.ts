@@ -2,12 +2,27 @@ import * as crypto from "crypto"
 import type { HashDriver, ScryptOptions } from '../types'
 
 const SCRYPT_PREFIX = "$scrypt$"
+const MAX_N = 1 << 20
+const MAX_R = 32
+const MAX_P = 16
+const MAX_KEYLEN = 1024
+
+function validParams(N: number, r: number, p: number, keylen: number): boolean {
+  return Number.isInteger(N) && N >= 2 && N <= MAX_N && (N & (N - 1)) === 0 &&
+    Number.isInteger(r) && r >= 1 && r <= MAX_R &&
+    Number.isInteger(p) && p >= 1 && p <= MAX_P &&
+    Number.isInteger(keylen) && keylen >= 16 && keylen <= MAX_KEYLEN
+}
 
 function scryptMake(value: string, opts: ScryptOptions): Promise<string> {
   const N = opts.N ?? 16384
   const r = opts.r ?? 8
   const p = opts.p ?? 1
   const keylen = opts.keylen ?? 64
+
+  if (!validParams(N, r, p, keylen)) {
+    return Promise.reject(new RangeError('Invalid or unsafe scrypt parameters'))
+  }
 
   const salt = crypto.randomBytes(16).toString("hex")
 
@@ -43,7 +58,9 @@ function scryptVerify(value: string, hash: string): Promise<boolean> {
     const r = params["r"] ?? 8
     const p = params["p"] ?? 1
     const keylen = params["keylen"] ?? 64
-    if (![N, r, p, keylen].every((n) => Number.isInteger(n) && n > 0)) return resolve(false)
+    if (!validParams(N, r, p, keylen)) return resolve(false)
+    if (!/^[0-9a-f]+$/i.test(salt) || salt.length > 1024) return resolve(false)
+    if (!/^[0-9a-f]+$/i.test(storedHash) || storedHash.length !== keylen * 2) return resolve(false)
 
     crypto.scrypt(value, salt, keylen, { N, r, p }, (err, derived) => {
       if (err) return reject(err)

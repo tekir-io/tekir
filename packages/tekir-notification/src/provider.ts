@@ -23,14 +23,28 @@ export class NotificationProvider {
 
     const notificationConfig = { ...config('notification') }
 
+    // Route notification mail through the configured @tekir/mail service.
+    if (!notificationConfig.mail) {
+      let mail: any
+      try { mail = app.use('mail') } catch {}
+      if (mail && typeof mail.dispatch === 'function') {
+        notificationConfig.mail = { dispatch: mail.dispatch.bind(mail) }
+      }
+    }
+
     // Auto-inject db service for database channel if available
     if (!notificationConfig.db) {
       let db: any
       try { db = app.use('db') } catch {}
-      if (db && typeof db.query === 'function') {
+      const execute = typeof db?.execute === 'function'
+        ? db.execute
+        : typeof db?.run === 'function'
+          ? db.run
+          : undefined
+      if (db && typeof db.query === 'function' && execute) {
         notificationConfig.db = {
           query: db.query.bind(db),
-          execute: db.run.bind(db),
+          execute: execute.bind(db),
         }
       }
     }

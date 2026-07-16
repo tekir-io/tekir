@@ -71,6 +71,17 @@ describe('getAll secret redaction', () => {
     expect(all.list.items[0].token).toBe('[REDACTED]')
     expect(all.list.items[1].token).toBe('[REDACTED]')
   })
+
+  test('redacts cyclic objects without returning the original secret-bearing object', () => {
+    const store = createConfigStore()
+    const value: any = { token: 'secret' }
+    value.self = value
+    store.register('cyclic', value)
+    const all = store.getAll()
+    expect(all.cyclic.token).toBe('[REDACTED]')
+    expect(all.cyclic.self).toBe(all.cyclic)
+    expect(all.cyclic.self.token).toBe('[REDACTED]')
+  })
 })
 
 // ── Schema validation ────────────────────────────────────────────────────────
@@ -121,6 +132,20 @@ describe('dot-path own-property safety', () => {
     const store = createConfigStore()
     store.register('app', { name: 'x' })
     expect(store.get('app.prototype', 'safe')).toBe('safe')
+  })
+
+  test('does not traverse inherited properties', () => {
+    const store = createConfigStore()
+    store.register('app', Object.create({ exposed: 'prototype-value' }))
+    expect(store.get('app.exposed', 'safe')).toBe('safe')
+  })
+
+  test('supports falsy top-level namespaces', () => {
+    const store = createConfigStore()
+    store.register('disabled', false)
+    store.register('zero', 0)
+    expect(store.get('disabled', true)).toBe(false)
+    expect(store.get('zero', 1)).toBe(0)
   })
 })
 

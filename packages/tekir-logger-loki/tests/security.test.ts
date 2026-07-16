@@ -149,4 +149,20 @@ describe('LokiTransport SSRF / security', () => {
     await Promise.resolve()
     expect(t.errorCount).toBe(0)
   })
+
+  test('supports non-ASCII Basic auth credentials without throwing', () => {
+    let authorization = ''
+    globalThis.fetch = (async (_url: string, init: any) => {
+      authorization = init.headers.Authorization
+      return new Response('', { status: 204 })
+    }) as any
+    const transport = new LokiTransport({
+      url: 'https://logs.example.com',
+      auth: { username: 'kullanıcı', password: 'şifre' },
+      batchSize: 1,
+      flushInterval: 0,
+    })
+    expect(() => transport.write({ level: 'info', name: 'app', msg: 'ok' })).not.toThrow()
+    expect(authorization).toStartWith('Basic ')
+  })
 })

@@ -1,7 +1,8 @@
 // Types
+import type { MailMessage } from '@tekir/mail'
 
 export interface MailPayload {
-  to: string
+  to: string | string[]
   subject: string
   html?: string
   text?: string
@@ -43,6 +44,11 @@ export interface DbAdapter {
   execute(sql: string, params?: unknown[]): Promise<void>
 }
 
+/** Minimal @tekir/mail-compatible adapter used by the mail channel. */
+export interface MailAdapter {
+  dispatch(message: MailMessage): Promise<void>
+}
+
 // FCM config interface
 
 export interface FcmConfig {
@@ -75,6 +81,7 @@ export interface FcmConfig {
 
 export interface NotificationConfig {
   db?: DbAdapter
+  mail?: MailAdapter
   fcm?: FcmConfig
   defaultChannels?: ChannelName[]
 }

@@ -8,9 +8,9 @@
     "bench": "bun run src/run.ts"
   },
   "dependencies": {
-    "@tekir/core": "^0.1.34",
+    "@tekir/core": "^0.1.35",
     "@tekir/http-decorators": "^0.1.2",
-    "@tekir/validator": "^0.1.2",
+    "@tekir/validator": "^0.1.3",
     "autocannon": "^8.0.0",
     "elysia": "latest"
   }

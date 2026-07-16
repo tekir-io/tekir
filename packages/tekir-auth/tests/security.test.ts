@@ -137,6 +137,17 @@ describe('DatabaseTokenGuard — keyed-HMAC token storage', () => {
     }
   })
 
+  test('surfaces table initialization errors', async () => {
+    const db = {
+      exec: async () => { throw new Error('database unavailable') },
+      queryOne: async () => null,
+      run: async () => {},
+    }
+    const guard = new DatabaseTokenGuard({ db, appKey: APP_KEY, resolve: async () => null })
+    await expect(guard.authenticate({ headers: { authorization: 'Bearer oat_token' } }))
+      .rejects.toThrow('failed to ensure table')
+  })
+
   test('weak (too short) APP_KEY is rejected', () => {
     expect(() => new DatabaseTokenGuard({ ...baseConfig, appKey: 'short' })).toThrow('too short')
   })

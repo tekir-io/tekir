@@ -201,6 +201,7 @@ export function client(baseUrl: string) {
         put: (path: string, opts?: RequestOptions) => request('PUT', path, { ...opts, headers: { ...opts?.headers, [name]: value } }),
         patch: (path: string, opts?: RequestOptions) => request('PATCH', path, { ...opts, headers: { ...opts?.headers, [name]: value } }),
         delete: (path: string, opts?: RequestOptions) => request('DELETE', path, { ...opts, headers: { ...opts?.headers, [name]: value } }),
+        head: (path: string, opts?: RequestOptions) => request('HEAD', path, { ...opts, headers: { ...opts?.headers, [name]: value } }),
         options: (path: string, opts?: RequestOptions) => request('OPTIONS', path, { ...opts, headers: { ...opts?.headers, [name]: value } }),
       }
     },
@@ -217,4 +218,3 @@ export function client(baseUrl: string) {
     },
   }
 }
-
