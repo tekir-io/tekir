@@ -1,6 +1,6 @@
 {
   "name": "@tekir/logger-pino",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pino logging transport integration",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/logger": "^0.1.3"
+    "@tekir/logger": "^0.1.0"
   },
   "peerDependencies": {
     "pino": ">=9.0.0"

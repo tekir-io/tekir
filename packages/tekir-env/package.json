@@ -1,6 +1,6 @@
 {
   "name": "@tekir/env",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Environment variable validation and parsing",
   "author": "dev@tekir.io",
   "license": "MIT",

@@ -17,6 +17,11 @@ import { drizzle as mysqlDrizzle } from 'drizzle-orm/mysql2'
 // the package is loaded alongside source-linked workspaces. Anchor optional
 // driver resolution to this module instead.
 const localRequire = createRequire(import.meta.url)
+let pgDriver: typeof import('pg') | undefined
+let mysqlDriver: typeof import('mysql2/promise') | undefined
+
+try { pgDriver = localRequire('pg') } catch {}
+try { mysqlDriver = localRequire('mysql2/promise') } catch {}
 
 export type { SqliteConnectionConfig, PostgresConnectionConfig, MysqlConnectionConfig, ConnectionConfig, DatabaseConfig }
 
@@ -103,7 +108,7 @@ export class Database {
       }
       case 'postgres': {
         try {
-          const pg = localRequire('pg')
+          if (!pgDriver) throw new Error('Cannot find pg')
           const c = conn as PostgresConnectionConfig
           let url = c.connectionString || c.url || `postgres://${c.user}:${c.password}@${c.host || 'localhost'}:${c.port || 5432}/${c.database}`
           const needsSsl = c.ssl || url.includes('sslmode=require') || url.includes('sslmode=verify')
@@ -111,7 +116,7 @@ export class Database {
           // Secure by default: verify the server certificate. Disabling verification
           // requires an explicit { ssl: { rejectUnauthorized: false } } in config.
           const sslConfig = resolveSsl(c.ssl, !!needsSsl)
-          raw = new pg.Pool({ connectionString: url, ssl: sslConfig, ...pgPoolSettings(c) })
+          raw = new pgDriver.Pool({ connectionString: url, ssl: sslConfig, ...pgPoolSettings(c) })
           // Surface idle-client errors instead of crashing the process.
           raw.on('error', () => { /* connection-level error; pg reconnects on next query */ })
           drizzle = config.schema
@@ -126,7 +131,7 @@ export class Database {
       }
       case 'mysql': {
         try {
-          const mysql = localRequire('mysql2/promise')
+          if (!mysqlDriver) throw new Error('Cannot find mysql2')
           const c = conn as MysqlConnectionConfig
           let url = c.connectionString || c.url || `mysql://${c.user}:${c.password}@${c.host || 'localhost'}:${c.port || 3306}/${c.database}`
           const needsSsl = c.ssl || url.includes('ssl-mode=REQUIRED') || url.includes('ssl=true')
@@ -134,7 +139,7 @@ export class Database {
           const poolOpts: any = { uri: url, ...mysqlPoolSettings(c) }
           const mysqlSsl = resolveSsl(c.ssl, !!needsSsl)
           if (mysqlSsl) poolOpts.ssl = mysqlSsl
-          raw = mysql.createPool(poolOpts)
+          raw = mysqlDriver.createPool(poolOpts)
           drizzle = config.schema
             ? mysqlDrizzle(raw, { schema: config.schema, mode: 'default' })
             : mysqlDrizzle(raw)

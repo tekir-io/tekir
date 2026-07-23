@@ -1,6 +1,6 @@
 {
   "name": "@tekir/bodyparser",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "description": "Multipart form and file upload parsing middleware",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,8 +39,8 @@
     }
   },
   "dependencies": {
-    "@tekir/runtime": "^0.1.5",
-    "@tekir/core": "^0.1.35"
+    "@tekir/runtime": "^0.1.0",
+    "@tekir/core": "^0.1.0"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

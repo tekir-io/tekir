@@ -289,6 +289,7 @@ function compileHandler(
 ): (req: Request) => Response | Promise<Response> {
   const allMw = [...globalMw, ...middlewares]
   const hasMw = allMw.length > 0
+  const delegatesBodyParsing = allMw.some(middleware => Boolean((middleware as any)[Symbol.for('tekir.bodyParser')]))
   const isDynamic = /[:*]/.test(pattern)
 
   // Use __source if available (bound methods from decorator controllers)
@@ -327,7 +328,7 @@ function compileHandler(
     response: /\bresponse\b/.test(allStr) || needsStatefulResponse,
   }
 
-  const parsesBody = inference.body && !['GET', 'HEAD', 'OPTIONS'].includes(routeMethod)
+  const parsesBody = inference.body && !delegatesBodyParsing && !['GET', 'HEAD', 'OPTIONS'].includes(routeMethod)
   const lazyContextFields = isPassThrough || hasMw
   const eagerQuery = inference.query && !lazyContextFields
   const isAsync = /\basync\b/.test(fnStr) || /\bawait\b/.test(fnStr) || parsesBody || hasMw

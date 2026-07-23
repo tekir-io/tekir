@@ -1,4 +1,5 @@
 import { test, expect, describe } from 'bun:test'
+import { TekirServer } from '../../tekir-core/src/server/server'
 import { bodyParser } from '../src/middleware'
 
 
@@ -520,5 +521,55 @@ describe('Edge cases', () => {
     // Global on, json-specific off
     const { ctx } = await run({ convertEmptyStringsToNull: true, json: { convertEmptyStringsToNull: false } }, req)
     expect(ctx.body.x).toBe('')
+  })
+})
+
+describe('core integration', () => {
+  test('core delegates multipart parsing to the configured body parser', async () => {
+    const server = new TekirServer()
+    const router = server.getRouter()
+    router.useGlobal(bodyParser({ multipart: { maxParts: 2 } }))
+    router.post('/upload', ({ body, request }: any) => ({
+      body,
+      title: request.input('title'),
+    }))
+
+    const form = new FormData()
+    form.append('title', 'test')
+    form.append('avatar', new File(['file'], 'avatar.txt'))
+    const response = await server.handle(new Request('http://localhost/upload', {
+      method: 'POST',
+      body: form,
+    }))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      body: { title: 'test' },
+      title: 'test',
+    })
+  })
+
+  test('core does not consume multipart data before maxParts rejects it', async () => {
+    const server = new TekirServer()
+    const router = server.getRouter()
+    router.useGlobal(bodyParser({
+      multipart: {
+        maxParts: 2,
+        maxFields: 10,
+        maxFiles: 10,
+      },
+    }))
+    router.post('/upload', ({ body }: any) => body)
+
+    const form = new FormData()
+    form.append('a', '1')
+    form.append('b', '2')
+    form.append('c', '3')
+    const response = await server.handle(new Request('http://localhost/upload', {
+      method: 'POST',
+      body: form,
+    }))
+
+    expect(response.status).toBe(413)
   })
 })

@@ -1,6 +1,6 @@
 {
   "name": "@tekir/cron",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Cron job scheduling and task management",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/core": "^0.1.35",
+    "@tekir/core": "^0.1.0",
     "croner": "^9.0.0"
   },
   "scripts": {

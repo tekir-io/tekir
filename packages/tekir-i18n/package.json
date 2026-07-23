@@ -1,6 +1,6 @@
 {
   "name": "@tekir/i18n",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Internationalization and translation management",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,8 +39,8 @@
     }
   },
   "dependencies": {
-    "@tekir/core": "^0.1.35",
-    "@tekir/runtime": "^0.1.5"
+    "@tekir/core": "^0.1.0",
+    "@tekir/runtime": "^0.1.0"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

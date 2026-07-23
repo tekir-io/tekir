@@ -10,13 +10,13 @@
     "start": "bun run index.ts start"
   },
   "dependencies": {
-    "@tekir/core": "^0.1.35",
-    "@tekir/cors": "^0.1.5",
-    "@tekir/cron": "^0.1.7",
-    "@tekir/db": "^0.1.5",
-    "@tekir/limiter": "^0.1.2",
-    "@tekir/swagger": "^0.1.4",
-    "@tekir/testing": "^0.1.9",
+    "@tekir/core": "^0.1.0",
+    "@tekir/cors": "^0.1.0",
+    "@tekir/cron": "^0.1.0",
+    "@tekir/db": "^0.1.0",
+    "@tekir/limiter": "^0.1.0",
+    "@tekir/swagger": "^0.1.0",
+    "@tekir/testing": "^0.1.0",
     "better-sqlite3": "^12.8.0",
     "zod": "^3.22.0"
   }

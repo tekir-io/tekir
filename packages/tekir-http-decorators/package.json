@@ -1,6 +1,6 @@
 {
   "name": "@tekir/http-decorators",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "description": "Route and controller decorators for HTTP",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,10 +39,10 @@
     }
   },
   "dependencies": {
-    "@tekir/core": "^0.1.35"
+    "@tekir/core": "^0.1.0"
   },
   "peerDependencies": {
-    "@tekir/cache": "^0.1.8"
+    "@tekir/cache": "^0.1.0"
   },
   "peerDependenciesMeta": {
     "@tekir/cache": {

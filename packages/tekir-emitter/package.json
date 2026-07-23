@@ -1,6 +1,6 @@
 {
   "name": "@tekir/emitter",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Event emitter with real and fake implementations",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/core": "^0.1.35"
+    "@tekir/core": "^0.1.0"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

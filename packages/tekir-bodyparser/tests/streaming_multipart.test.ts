@@ -148,6 +148,34 @@ describe('streaming multipart — early limit enforcement', () => {
     const req = streamRequest(body, { sliceSize: 16 })
     await expect(parseMultipart(req, { maxFields: 2 })).rejects.toBeInstanceOf(PayloadTooLargeError)
   })
+
+  test('maxParts accepts a request at the configured limit', async () => {
+    const body = buildMultipart([
+      { name: 'title', data: 'test' },
+      { name: 'avatar', filename: 'avatar.txt', data: 'file' },
+    ])
+
+    const parsed = await parseMultipart(streamRequest(body, { sliceSize: 8 }), { maxParts: 2 })
+
+    expect(parsed.body.title).toBe('test')
+    expect(parsed.files.file('avatar')?.toString()).toBe('file')
+  })
+
+  test('maxParts rejects many small mixed parts before parsing the next part', async () => {
+    const body = buildMultipart([
+      { name: 'a', data: '1' },
+      { name: 'b', filename: 'b.txt', data: '2' },
+      { name: 'c', data: '3' },
+    ])
+
+    await expect(
+      parseMultipart(streamRequest(body, { sliceSize: 8 }), {
+        maxParts: 2,
+        maxFields: 10,
+        maxFiles: 10,
+      }),
+    ).rejects.toThrow('Too many multipart parts: maximum 2 allowed')
+  })
 })
 
 

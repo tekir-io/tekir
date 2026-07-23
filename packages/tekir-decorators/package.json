@@ -1,6 +1,6 @@
 {
   "name": "@tekir/decorators",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Generic decorator toolkit for TypeScript metadata",
   "author": "dev@tekir.io",
   "license": "MIT",

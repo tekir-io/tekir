@@ -1,6 +1,6 @@
 {
   "name": "@tekir/db-decorators",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Model decorators for relationships and hooks",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/db": "^0.1.5"
+    "@tekir/db": "^0.1.0"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

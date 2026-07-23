@@ -119,13 +119,11 @@ describe('route metadata does not leak across controller inheritance', () => {
     // Exercise the legacy addRoute path directly via route metadata arrays.
     class BaseCtrl {}
     class ChildCtrl extends BaseCtrl {}
-    const { Get: GetDec } = require('../src/route')
-
     // Apply a legacy-style decorator by calling the returned function with
     // (prototype, methodName) so addRoute runs against each constructor.
-    const dec = GetDec('/base')
+    const dec = Get('/base')
     dec(BaseCtrl.prototype, 'baseHandler')
-    const dec2 = GetDec('/child')
+    const dec2 = Get('/child')
     dec2(ChildCtrl.prototype, 'childHandler')
 
     const baseRoutes = (BaseCtrl as any).__routes || []

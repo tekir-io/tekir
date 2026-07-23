@@ -21,20 +21,24 @@
  * only when `@Cache(...)` is actually used, so importing `@tekir/http-decorators`
  * (or any other decorator from it) does not pull in `@tekir/cache`.
  */
+import { createRequire } from "node:module"
 import { Middleware } from "./middleware"
 import type { HttpCacheOptions } from "@tekir/cache"
 
+const localRequire = createRequire(import.meta.url)
+let cacheMiddleware: ((options: HttpCacheOptions) => unknown) | undefined
+
+try {
+  const cacheModule = import.meta.resolve("@tekir/cache")
+  cacheMiddleware = (localRequire(cacheModule) as typeof import("@tekir/cache")).cache
+} catch {}
+
 export function Cache(opts: HttpCacheOptions = {}): any {
-  // Lazy require so projects that never use @Cache don't need @tekir/cache.
-  let cacheMw: (o: HttpCacheOptions) => unknown
-  try {
-    cacheMw = (require("@tekir/cache") as typeof import("@tekir/cache")).cache
-  } catch (err) {
+  if (!cacheMiddleware) {
     throw new Error(
       "[http-decorators] @Cache requires the optional peer dependency '@tekir/cache'. " +
-      "Install it to use this decorator. " +
-      `(${err instanceof Error ? err.message : String(err)})`,
+      "Install it to use this decorator.",
     )
   }
-  return Middleware([cacheMw(opts) as any])
+  return Middleware([cacheMiddleware(opts) as any])
 }

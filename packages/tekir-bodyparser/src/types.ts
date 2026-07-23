@@ -69,6 +69,7 @@ export interface BodyParserConfig {
     maxFileSize?: string | number  // default '8mb'
     maxFiles?: number              // default 20
     maxFields?: number             // max non-file form fields, default 1000
+    maxParts?: number              // max total file and field parts, default 1000
     limit?: string | number        // total request size limit, default '20mb'
     /**
      * Spill a streamed file part to a temp file on disk once it grows past

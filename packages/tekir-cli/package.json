@@ -1,6 +1,6 @@
 {
   "name": "@tekir/cli",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "tekir command-line tool: serve, build, generate-key, and provider-registered commands.",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -30,7 +30,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@tekir/core": "^0.1.35",
+    "@tekir/core": "^0.1.0",
     "oxc-parser": ">=0.30.0"
   },
   "engines": {

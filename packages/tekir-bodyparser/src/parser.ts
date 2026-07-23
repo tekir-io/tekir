@@ -153,7 +153,7 @@ class PartSink {
  * This is a streaming parser: it reads the request body stream and parses the
  * multipart boundaries incrementally rather than buffering the whole body via
  * the runtime's `request.formData()`. Size limits (`maxFileSize`, total
- * `limit`, `maxFiles`, `maxFields`) are enforced *during* streaming and abort
+ * `limit`, `maxFiles`, `maxFields`, `maxParts`) are enforced *during* streaming and abort
  * early with {@link PayloadTooLargeError} so an oversized payload is never
  * fully buffered. Large file parts are spilled to a temp file on disk (see
  * `spillThreshold` + `tmpDir`) to keep memory bounded; partial spills are
@@ -178,6 +178,7 @@ export async function parseMultipart(request: Request, config?: BodyParserConfig
   const totalLimit = config?.limit ? parseSize(config.limit) : parseSize('20mb')
   const maxFiles = config?.maxFiles ?? 20
   const maxFields = config?.maxFields ?? 1000
+  const maxParts = config?.maxParts ?? 1000
   const spillThreshold = config?.spillThreshold !== undefined ? parseSize(config.spillThreshold) : parseSize('1mb')
 
   // Cheap pre-check: a declared Content-Length already over the limit is
@@ -202,7 +203,7 @@ export async function parseMultipart(request: Request, config?: BodyParserConfig
   // are still applied per-file below.
   const stream = (request as any).body
   if (!boundary || !stream || typeof stream.getReader !== 'function') {
-    return fallbackFormData(request, { maxFileSize, totalLimit, maxFiles, maxFields, tmpDirAbs, config })
+    return fallbackFormData(request, { maxFileSize, totalLimit, maxFiles, maxFields, maxParts, tmpDirAbs, config })
   }
 
   const body: Record<string, any> = {}
@@ -210,6 +211,7 @@ export async function parseMultipart(request: Request, config?: BodyParserConfig
   const created: UploadedFile[] = []
   let fileCount = 0
   let fieldCount = 0
+  let partCount = 0
   let totalSize = 0
 
   const delimiter = Buffer.from(`\r\n--${boundary}`, 'utf-8')
@@ -272,6 +274,14 @@ export async function parseMultipart(request: Request, config?: BodyParserConfig
               throw new PayloadTooLargeError('Multipart part headers too large')
             }
             break
+          }
+          partCount++
+          if (partCount > maxParts) {
+            try { await reader.cancel() } catch {}
+            await cleanup()
+            throw new PayloadTooLargeError(
+              `Too many multipart parts: maximum ${maxParts} allowed`,
+            )
           }
           const headerBlock = buf.subarray(0, sep).toString('utf-8')
           buf = buf.subarray(sep + headerSep.length)
@@ -452,6 +462,7 @@ async function fallbackFormData(
     totalLimit: number
     maxFiles: number
     maxFields: number
+    maxParts: number
     tmpDirAbs: string | null
     config?: BodyParserConfig['multipart']
   },
@@ -461,9 +472,14 @@ async function fallbackFormData(
   const files = new MultipartFiles()
   let fileCount = 0
   let fieldCount = 0
+  let partCount = 0
   let totalSize = 0
 
   for (const [key, value] of formData.entries()) {
+    partCount++
+    if (partCount > opts.maxParts) {
+      throw new PayloadTooLargeError(`Too many multipart parts: maximum ${opts.maxParts} allowed`)
+    }
     if (typeof (value as any).arrayBuffer === 'function' && (value as any).name !== undefined) {
       fileCount++
       if (fileCount > opts.maxFiles) {

@@ -1,5 +1,5 @@
 import { test, expect, describe } from 'bun:test'
-import { App, TekirServer } from '@tekir/core'
+import { App, HttpException, TekirServer } from '@tekir/core'
 import { Auth } from '../src/auth_manager'
 import { JwtGuard } from '../src/guards/jwt_guard'
 import { SessionGuard } from '../src/guards/session_guard'
@@ -1400,7 +1400,6 @@ describe('Auth middleware — does not swallow downstream errors', () => {
     const jwtGuard = new JwtGuard({ secret, expiresIn: 3600, resolve: findUser })
     const manager = new Auth({ defaultGuard: 'jwt', guards: { jwt: () => jwtGuard } })
 
-    const { HttpException } = require('@tekir/core')
     const forbidMiddleware = async () => { throw new HttpException('Forbidden', 403) }
 
     router.get('/forbidden', () => ({ ok: true }))
@@ -1420,7 +1419,6 @@ describe('Auth middleware — does not swallow downstream errors', () => {
     const jwtGuard = new JwtGuard({ secret, expiresIn: 3600, resolve: findUser })
     const manager = new Auth({ defaultGuard: 'jwt', guards: { jwt: () => jwtGuard } })
 
-    const { HttpException } = require('@tekir/core')
     const validationMiddleware = async () => { throw new HttpException('Validation failed', 422, 'VALIDATION') }
 
     router.post('/validate', () => ({ ok: true }))

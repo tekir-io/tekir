@@ -1,6 +1,6 @@
 {
   "name": "@tekir/swagger-decorators",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Re-export Swagger decorators",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/swagger": "^0.1.4"
+    "@tekir/swagger": "^0.1.0"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

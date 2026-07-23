@@ -76,7 +76,7 @@ export function createRequest(
   let parsedUrl: URL | undefined
   let queryParams = parsedQuery
   let requestId: string | undefined
-  const body: any = parsedBody
+  const getBody = () => parsedBody ?? (raw as any)._parsedBody
 
   // URL and query parsing are lazy. A hot route that only reads
   // `request.method` or `request.url` keeps the same allocation profile as
@@ -125,11 +125,12 @@ export function createRequest(
     },
 
     all() {
-      return safeMerge(getQuery(), body)
+      return safeMerge(getQuery(), getBody())
     },
 
     input(key: string, defaultValue?: any) {
       if (isUnsafeKey(key)) return defaultValue
+      const body = getBody()
       if (body && Object.prototype.hasOwnProperty.call(body, key)) return body[key]
       const query = getQuery()
       if (Object.prototype.hasOwnProperty.call(query, key)) return query[key]
@@ -154,7 +155,10 @@ export function createRequest(
     qs() { return getQuery() },
     param(key: string, defaultValue?: string) { return params[key] ?? defaultValue },
     params() { return params },
-    hasBody() { return body !== undefined && body !== null },
+    hasBody() {
+      const body = getBody()
+      return body !== undefined && body !== null
+    },
 
     accepts(types: string[]) {
       const accept = raw.headers.get('accept') || ''

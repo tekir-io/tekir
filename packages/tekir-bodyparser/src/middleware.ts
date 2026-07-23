@@ -215,7 +215,7 @@ function parseQueryString(str: string, opts?: NonNullable<BodyParserConfig['form
 export function bodyParser(config?: BodyParserConfig) {
   const allowedMethods = (config?.allowedMethods || ['POST', 'PUT', 'PATCH', 'DELETE']).map(m => m.toUpperCase())
 
-  return async (ctx: any, next: () => Promise<void>) => {
+  const middleware = async (ctx: any, next: () => Promise<void>) => {
     const request = ctx.request?.raw || ctx.request
     if (!request) return next()
 
@@ -410,4 +410,7 @@ export function bodyParser(config?: BodyParserConfig) {
 
     return next()
   }
+
+  Object.defineProperty(middleware, Symbol.for('tekir.bodyParser'), { value: true })
+  return middleware
 }

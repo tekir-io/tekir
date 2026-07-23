@@ -264,28 +264,28 @@
     },
     "packages/create-tekir-app": {
       "name": "create-tekir-app",
-      "version": "0.1.10",
+      "version": "0.1.11",
       "bin": {
         "create-tekir-app": "dist/index.js",
       },
     },
     "packages/tekir-auth": {
       "name": "@tekir/auth",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
     },
     "packages/tekir-authorize": {
       "name": "@tekir/authorize",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
     },
     "packages/tekir-bodyparser": {
       "name": "@tekir/bodyparser",
-      "version": "0.1.5",
+      "version": "0.1.7",
       "dependencies": {
         "@tekir/core": "^0.1.35",
         "@tekir/runtime": "^0.1.5",
@@ -293,7 +293,7 @@
     },
     "packages/tekir-cache": {
       "name": "@tekir/cache",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
@@ -306,7 +306,7 @@
     },
     "packages/tekir-cli": {
       "name": "@tekir/cli",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "bin": {
         "tekir": "bin/tekir.mjs",
       },
@@ -317,26 +317,26 @@
     },
     "packages/tekir-commands": {
       "name": "@tekir/commands",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
-        "@tekir/runtime": "^0.1.5",
+        "@tekir/runtime": "^0.1.0",
       },
     },
     "packages/tekir-config": {
       "name": "@tekir/config",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "dependencies": {
-        "@tekir/runtime": "^0.1.5",
+        "@tekir/runtime": "^0.1.0",
       },
     },
     "packages/tekir-core": {
       "name": "@tekir/core",
-      "version": "0.1.35",
+      "version": "0.1.37",
       "dependencies": {
-        "@tekir/commands": "^0.1.2",
-        "@tekir/config": "^0.1.3",
-        "@tekir/logger": "^0.1.3",
-        "@tekir/runtime": "^0.1.5",
+        "@tekir/commands": "^0.1.0",
+        "@tekir/config": "^0.1.0",
+        "@tekir/logger": "^0.1.0",
+        "@tekir/runtime": "^0.1.0",
       },
       "peerDependencies": {
         "oxc-parser": ">=0.30.0",
@@ -348,11 +348,11 @@
     },
     "packages/tekir-cors": {
       "name": "@tekir/cors",
-      "version": "0.1.5",
+      "version": "0.1.6",
     },
     "packages/tekir-cron": {
       "name": "@tekir/cron",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "dependencies": {
         "@tekir/core": "^0.1.35",
         "croner": "^9.0.0",
@@ -360,19 +360,22 @@
     },
     "packages/tekir-cron-decorators": {
       "name": "@tekir/cron-decorators",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "@tekir/cron": "^0.1.7",
       },
     },
     "packages/tekir-db": {
       "name": "@tekir/db",
-      "version": "0.1.5",
+      "version": "0.1.7",
       "dependencies": {
-        "@tekir/core": "^0.1.35",
-        "@tekir/runtime": "^0.1.5",
+        "@tekir/core": "^0.1.0",
+        "@tekir/runtime": "^0.1.0",
         "drizzle-kit": "^0.31.0",
         "drizzle-orm": "^0.45.2",
+      },
+      "devDependencies": {
+        "@types/pg": "^8.20.0",
       },
       "optionalDependencies": {
         "mysql2": "^3.0.0",
@@ -381,18 +384,18 @@
     },
     "packages/tekir-db-decorators": {
       "name": "@tekir/db-decorators",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "@tekir/db": "^0.1.5",
       },
     },
     "packages/tekir-decorators": {
       "name": "@tekir/decorators",
-      "version": "0.1.1",
+      "version": "0.1.2",
     },
     "packages/tekir-drive": {
       "name": "@tekir/drive",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "dependencies": {
         "@tekir/core": "^0.1.35",
         "@tekir/runtime": "^0.1.5",
@@ -400,35 +403,35 @@
     },
     "packages/tekir-emitter": {
       "name": "@tekir/emitter",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
     },
     "packages/tekir-encryption": {
       "name": "@tekir/encryption",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
     },
     "packages/tekir-env": {
       "name": "@tekir/env",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "envalid": "^8.0.0",
       },
     },
     "packages/tekir-event-decorators": {
       "name": "@tekir/event-decorators",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "@tekir/emitter": "^0.1.6",
       },
     },
     "packages/tekir-hash": {
       "name": "@tekir/hash",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@tekir/core": "^0.1.35",
         "@tekir/runtime": "^0.1.5",
@@ -436,14 +439,14 @@
     },
     "packages/tekir-health": {
       "name": "@tekir/health",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
     },
     "packages/tekir-http-decorators": {
       "name": "@tekir/http-decorators",
-      "version": "0.1.2",
+      "version": "0.1.4",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
@@ -456,7 +459,7 @@
     },
     "packages/tekir-i18n": {
       "name": "@tekir/i18n",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@tekir/core": "^0.1.35",
         "@tekir/runtime": "^0.1.5",
@@ -464,32 +467,32 @@
     },
     "packages/tekir-limiter": {
       "name": "@tekir/limiter",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
     },
     "packages/tekir-logger": {
       "name": "@tekir/logger",
-      "version": "0.1.3",
+      "version": "0.1.4",
     },
     "packages/tekir-logger-datadog": {
       "name": "@tekir/logger-datadog",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@tekir/logger": "^0.1.3",
       },
     },
     "packages/tekir-logger-loki": {
       "name": "@tekir/logger-loki",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@tekir/logger": "^0.1.3",
       },
     },
     "packages/tekir-logger-pino": {
       "name": "@tekir/logger-pino",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "@tekir/logger": "^0.1.3",
       },
@@ -499,14 +502,14 @@
     },
     "packages/tekir-mail": {
       "name": "@tekir/mail",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
     },
     "packages/tekir-mongodb": {
       "name": "@tekir/mongodb",
-      "version": "0.1.2",
+      "version": "0.1.4",
       "dependencies": {
         "@tekir/core": "^0.1.35",
         "mongoose": "^8.0.0",
@@ -517,7 +520,7 @@
     },
     "packages/tekir-next": {
       "name": "@tekir/next",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
@@ -527,7 +530,7 @@
     },
     "packages/tekir-notification": {
       "name": "@tekir/notification",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "dependencies": {
         "@tekir/core": "^0.1.35",
         "@tekir/mail": "^0.1.2",
@@ -535,7 +538,7 @@
     },
     "packages/tekir-queue": {
       "name": "@tekir/queue",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
@@ -550,29 +553,29 @@
     },
     "packages/tekir-redis": {
       "name": "@tekir/redis",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
-        "@tekir/core": "^0.1.35",
+        "@tekir/core": "^0.1.0",
       },
     },
     "packages/tekir-runtime": {
       "name": "@tekir/runtime",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "peerDependencies": {
         "typescript": ">=5.0.0",
       },
     },
     "packages/tekir-session": {
       "name": "@tekir/session",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "dependencies": {
-        "@tekir/core": "^0.1.35",
+        "@tekir/core": "^0.1.0",
       },
       "devDependencies": {
-        "@tekir/redis": "^0.1.2",
+        "@tekir/redis": "^0.1.0",
       },
       "peerDependencies": {
-        "@tekir/redis": "^0.1.2",
+        "@tekir/redis": "^0.1.0",
       },
       "optionalPeers": [
         "@tekir/redis",
@@ -580,7 +583,7 @@
     },
     "packages/tekir-shield": {
       "name": "@tekir/shield",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "peerDependencies": {
         "@tekir/limiter": "^0.1.2",
       },
@@ -590,7 +593,7 @@
     },
     "packages/tekir-social": {
       "name": "@tekir/social",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
@@ -600,7 +603,7 @@
     },
     "packages/tekir-static": {
       "name": "@tekir/static",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@tekir/core": "^0.1.35",
         "@tekir/runtime": "^0.1.5",
@@ -608,7 +611,7 @@
     },
     "packages/tekir-swagger": {
       "name": "@tekir/swagger",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
@@ -618,14 +621,14 @@
     },
     "packages/tekir-swagger-decorators": {
       "name": "@tekir/swagger-decorators",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "@tekir/swagger": "^0.1.4",
       },
     },
     "packages/tekir-testing": {
       "name": "@tekir/testing",
-      "version": "0.1.9",
+      "version": "0.1.10",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
@@ -638,18 +641,18 @@
     },
     "packages/tekir-validator": {
       "name": "@tekir/validator",
-      "version": "0.1.3",
+      "version": "0.1.4",
     },
     "packages/tekir-view": {
       "name": "@tekir/view",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "@tekir/core": "^0.1.35",
       },
     },
     "packages/tekir-vite": {
       "name": "@tekir/vite",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "dependencies": {
         "@tekir/core": "^0.1.35",
         "@tekir/runtime": "^0.1.5",
@@ -1063,6 +1066,8 @@
     "@types/json-schema": ["@types/json-schema@7.0.15", "", {}, "sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA=="],
 
     "@types/node": ["@types/node@25.6.0", "", { "dependencies": { "undici-types": "~7.19.0" } }, "sha512-+qIYRKdNYJwY3vRCZMdJbPLJAtGjQBudzZzdzwQYkEPQd+PJGixUL5QfvCLDaULoLv+RhT3LDkwEfKaAkgSmNQ=="],
+
+    "@types/pg": ["@types/pg@8.20.0", "", { "dependencies": { "@types/node": "*", "pg-protocol": "*", "pg-types": "^2.2.0" } }, "sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow=="],
 
     "@types/react": ["@types/react@19.2.14", "", { "dependencies": { "csstype": "^3.2.2" } }, "sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w=="],
 

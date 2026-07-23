@@ -1,6 +1,6 @@
 {
   "name": "@tekir/vite",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Vite integration middleware for tekir",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,8 +39,8 @@
     }
   },
   "dependencies": {
-    "@tekir/runtime": "^0.1.5",
-    "@tekir/core": "^0.1.35",
+    "@tekir/runtime": "^0.1.0",
+    "@tekir/core": "^0.1.0",
     "get-port": "^7.1.0"
   },
   "peerDependencies": {

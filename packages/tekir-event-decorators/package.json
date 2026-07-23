@@ -1,6 +1,6 @@
 {
   "name": "@tekir/event-decorators",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Decorators for event listeners",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/emitter": "^0.1.6"
+    "@tekir/emitter": "^0.1.0"
   },
   "scripts": {
     "build": "rm -rf dist && tsc --noEmit false",

@@ -1,6 +1,6 @@
 {
   "name": "@tekir/cors",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "CORS middleware for cross-origin requests",
   "author": "dev@tekir.io",
   "license": "MIT",

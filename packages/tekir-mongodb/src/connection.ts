@@ -1,7 +1,8 @@
 
+import mongoose from 'mongoose'
 import type { MongoConfig } from './types'
 
-let _mongoose: any = null
+const _mongoose: typeof mongoose = mongoose
 
 /**
  * Lazily load and cache the `mongoose` module.
@@ -16,13 +17,7 @@ let _mongoose: any = null
  * ```
  */
 export function loadMongoose() {
-  if (_mongoose) return _mongoose
-  try {
-    _mongoose = require('mongoose')
-    return _mongoose
-  } catch {
-    throw new Error('MongoDB requires: bun add mongoose')
-  }
+  return _mongoose
 }
 
 /**

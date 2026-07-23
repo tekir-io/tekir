@@ -1,6 +1,6 @@
 {
   "name": "@tekir/swagger",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "OpenAPI specification and Swagger UI generation",
   "author": "dev@tekir.io",
   "license": "MIT",
@@ -39,7 +39,7 @@
     }
   },
   "dependencies": {
-    "@tekir/core": "^0.1.35"
+    "@tekir/core": "^0.1.0"
   },
   "devDependencies": {
     "zod": "^3.23.0"
